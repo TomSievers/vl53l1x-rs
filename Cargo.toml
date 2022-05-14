@@ -1,7 +1,7 @@
 [package]
-name="vl53l1x-driver"
+name="vl53l1x-uld"
 version="0.1.0"
 edition="2021"
 
 [dependencies]
-embedded_hal = "0.2.7"
+embedded-hal="0.2.7"
