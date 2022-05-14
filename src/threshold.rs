@@ -1,96 +1,52 @@
-use fixed::types::I16F16;
+//! Module containing threshold definitions and implementations.
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum Mode {
-    None,
-    Distance,
-    Rate,
-    DistanceAndRate,
-    DistanceOrRate
+/// Threshold window behavior.
+pub enum Window {
+    /// Trigger when measurement is below threshold.
+    Below = 0,
+    /// Trigger when measurement is above threshold.
+    Above = 1,
+    /// Trigger when measurement is in the window.
+    In = 2,
+    /// Trigger when measurement is outside the window.
+    Out = 3
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum Type {
-    CrossedLow,
-    CrossedHigh,
-    InsideWindow,
-    OutsideWindow
+impl From<u8> for Window {
+    fn from(v: u8) -> Self {
+        match v {
+            0 => Window::Below,
+            1 => Window::Above,
+            2 => Window::In,
+            3 => Window::Out,
+            _ => Window::Below
+        }
+    }
 }
 
+/// Threshold sturcture defining a threshold.
 pub struct Threshold {
-    t : Type,
-    low_mm : Option<u16>,
-    high_mm : Option<u16>,
-    low_rate : Option<I16F16>,
-    high_rate : Option<I16F16>,
+    /// The lower bound of the threshold window.
+    pub low : u16,
+    /// The upper bound of the threshold window.
+    pub high : u16,
+    /// The window thresholding behavior.
+    pub window : Window
 }
 
 impl Threshold {
-    pub fn distance_threshold(high : u16, low : u16, t : Type) -> Self {
+    /// Create a new threshold with the given low threshold, high threshold and applied to the given window.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `low` - Lower bound of the threshold window.
+    /// * `high` - Upper bound of the threshold window.
+    /// * `window` - The window thresholding behavior.
+    pub fn new(low : u16, high : u16, window : Window) -> Self {
         Threshold {
-            t,
-            high_mm : Some(high),
-            low_mm : Some(low),
-            low_rate : None,
-            high_rate : None,
+            low,
+            high,
+            window
         }
-    }
-
-    pub fn rate_threshold(high : I16F16, low : I16F16, t : Type) -> Self {
-        Threshold {
-            t,
-            high_mm : None,
-            low_mm : None,
-            low_rate : Some(low),
-            high_rate : Some(high),
-        }
-    }
-}
-
-pub enum Trigger {
-    TargetFound,
-    NoTarget
-}
-
-pub struct ThresholdSettings {
-    mode : Mode,
-    dist_threshold : Option<Threshold>,
-    rate_threshold : Option<Threshold>,
-    trigger : Trigger,
-}
-
-impl ThresholdSettings {
-    pub fn default() -> Self {
-        ThresholdSettings {
-            mode : Mode::None,
-            dist_threshold : None,
-            rate_threshold : None,
-            trigger : Trigger::NoTarget
-        }
-    }
-
-    pub fn mode(mut self, mode : Mode) -> Self {
-
-        self.mode = mode;
-
-        self
-    }
-
-    pub fn threshold(mut self, threshold : Threshold) -> Self {
-
-        if threshold.high_mm.is_some() {
-            self.dist_threshold = Some(threshold);
-        } else {
-            self.rate_threshold = Some(threshold);
-        }
-
-        self
-    }
-
-    pub fn trigger_on(mut self, trigger : Trigger) -> Self {
-
-        self.trigger = trigger;
-
-        self
     }
 }
