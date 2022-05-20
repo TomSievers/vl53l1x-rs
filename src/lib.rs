@@ -6,6 +6,7 @@ use core::marker::PhantomData;
 use embedded_hal::blocking::i2c::{Write, WriteRead};
 use roi::{ROI, ROICenter};
 use threshold::{Threshold, Window};
+use core::fmt::Debug;
 pub mod threshold;
 pub mod roi;
 
@@ -22,8 +23,15 @@ pub struct SWVersion {
     pub revision : u32,
 }
 
+
 /// Driver error.
-pub enum Error<T : Write + WriteRead> {
+#[derive(Debug)]
+pub enum Error<T> 
+where 
+    T : Write + WriteRead,
+    <T as Write>::Error : Debug,
+    <T as WriteRead>::Error : Debug
+{
     /// Error occured during write operation with underlying fault from I2C implementation.
     WriteError(<T as Write>::Error),
     /// Error occured during write read operation with underlying fault from I2C implementation.
@@ -149,15 +157,22 @@ pub struct MeasureResult {
 pub const DEFAULT_ADDRESS : u8 = 0x29;
 
 /// Instance of a single VL53L1X driver.
-pub struct VL53L1X<T : WriteRead + Write> {
+pub struct VL53L1X<T> 
+where 
+    T : Write + WriteRead,
+    <T as Write>::Error : Debug,
+    <T as WriteRead>::Error : Debug
+{
     _i2c : PhantomData<T>,
     address : u8
 }
 
-impl<T : WriteRead + Write> VL53L1X<T> {
-
-    
-
+impl<T> VL53L1X<T> 
+where 
+    T : Write + WriteRead,
+    <T as Write>::Error : Debug,
+    <T as WriteRead>::Error : Debug
+{
     /// Create a new instance of the VL53L1X driver with the given address.
     /// 
     /// # Arguments
@@ -171,13 +186,13 @@ impl<T : WriteRead + Write> VL53L1X<T> {
     }
 
     /// Get the driver version.
-    pub fn sw_version() -> Result<SWVersion, Error<T>> {
-        Ok(SWVersion{
+    pub fn sw_version() -> SWVersion {
+        SWVersion{
             major : 3,
             minor : 5,
             build : 1,
             revision : 0
-        })
+        }
     }
 
     const VL53L1_I2C_SLAVE_DEVICE_ADDRESS : u16 = 0x01;
