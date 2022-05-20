@@ -12,3 +12,6 @@ categories = ["embedded", "no-std"]
 
 [dependencies]
 embedded-hal="0.2.7"
+
+[dev-dependencies]
+embedded-hal-mock = "0.8.0"
