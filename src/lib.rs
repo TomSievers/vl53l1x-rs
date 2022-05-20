@@ -537,6 +537,7 @@ impl<T : WriteRead + Write> VL53L1X<T> {
     /// # Arguments
     /// 
     /// * `mode` - The distance mode to use.
+    /// * `i2c` - I2C instance used for communication.
     pub fn set_distance_mode(&self, i2c : &mut T, mode : DistanceMode) -> Result<(), Error<T>> {
         let tb = self.get_timing_budget_ms(i2c)?;
 
@@ -558,6 +559,10 @@ impl<T : WriteRead + Write> VL53L1X<T> {
     }
 
     /// Get the currently set distance mode of the device.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `i2c` - I2C instance used for communication.
     pub fn get_distance_mode(&self, i2c : &mut T) -> Result<DistanceMode, Error<T>> {
         let mut out =[0u8];
         self.read_bytes(i2c, Self::PHASECAL_CONFIG_TIMEOUT_MACROP, &mut out)?;
@@ -576,6 +581,7 @@ impl<T : WriteRead + Write> VL53L1X<T> {
     /// 
     /// # Arguments
     /// 
+    /// * `i2c` - I2C instance used for communication.
     /// * `milliseconds` - The number of milliseconds used for the inter measurement period.
     pub fn set_inter_measurement_period_ms(&self, i2c : &mut T, milliseconds : u16) -> Result<(), Error<T>> {
         let mut clock_pll = [0u8, 0];
@@ -592,6 +598,10 @@ impl<T : WriteRead + Write> VL53L1X<T> {
     }
 
     /// Get the currently set inter measurement period in milliseconds.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `i2c` - I2C instance used for communication.
     pub fn get_inter_measurement_period_ms(&self, i2c : &mut T) -> Result<u16, Error<T>> {
         let mut clock_pll = [0u8, 0];
         let mut period = [0u8, 0, 0, 0];
@@ -608,6 +618,10 @@ impl<T : WriteRead + Write> VL53L1X<T> {
     }
 
     /// Check if the device is booted.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `i2c` - I2C instance used for communication.
     pub fn is_booted(&self, i2c : &mut T) -> Result<bool, Error<T>> {
         let mut status = [0u8];
         self.read_bytes(i2c, Self::VL53L1_FIRMWARE_SYSTEM_STATUS, &mut status)?;
@@ -615,7 +629,11 @@ impl<T : WriteRead + Write> VL53L1X<T> {
         Ok(status[0] == 1)
     }
 
-    /// Get the sensor id of the sensor. This id must be 0xEACC
+    /// Get the sensor id of the sensor. This id must be 0xEACC.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `i2c` - I2C instance used for communication.
     pub fn get_sensor_id(&self, i2c : &mut T) -> Result<u16, Error<T>> {
         
         let mut id = [0u8, 0];
@@ -626,6 +644,10 @@ impl<T : WriteRead + Write> VL53L1X<T> {
     }
 
     /// Get the distance measured in millimeters.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `i2c` - I2C instance used for communication.
     pub fn get_distance(&self, i2c : &mut T) -> Result<u16, Error<T>> {
         
         let mut distance = [0u8, 0];
@@ -635,7 +657,11 @@ impl<T : WriteRead + Write> VL53L1X<T> {
         Ok(u16::from_be_bytes(distance))
     }
 
-    /// Get the returned signal per SPAD in kcps/SPAD where kcps stands for Kilo Count Per Second
+    /// Get the returned signal per SPAD in kcps/SPAD where kcps stands for Kilo Count Per Second.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `i2c` - I2C instance used for communication.
     pub fn get_signal_per_spad(&self, i2c : &mut T) -> Result<u16, Error<T>> {
         let mut signal = [0, 0];
         let mut spad_count = [0, 0];
@@ -650,6 +676,10 @@ impl<T : WriteRead + Write> VL53L1X<T> {
     }
 
     /// Get the ambient signal per SPAD in kcps/SPAD.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `i2c` - I2C instance used for communication.
     pub fn get_ambient_per_spad(&self, i2c : &mut T) -> Result<u16, Error<T>> {
         let mut spad_count = [0, 0];
         let mut ambient = [0, 0];
@@ -664,6 +694,10 @@ impl<T : WriteRead + Write> VL53L1X<T> {
     }
 
     /// Get the returned signal in kcps.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `i2c` - I2C instance used for communication.
     pub fn get_signal_rate(&self, i2c : &mut T) -> Result<u16, Error<T>> {
         let mut signal = [0, 0];
 
@@ -672,7 +706,11 @@ impl<T : WriteRead + Write> VL53L1X<T> {
         Ok(u16::from_be_bytes(signal) * 8)
     }
 
-    /// Get the count of currently enabled SPADs
+    /// Get the count of currently enabled SPADs.77
+    /// 
+    /// # Arguments
+    /// 
+    /// * `i2c` - I2C instance used for communication.
     pub fn get_spad_count(&self, i2c : &mut T) -> Result<u16, Error<T>> {
         let mut spad_count = [0, 0];
 
@@ -682,6 +720,10 @@ impl<T : WriteRead + Write> VL53L1X<T> {
     }
 
     /// Get the ambient signal in kcps.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `i2c` - I2C instance used for communication.
     pub fn get_ambient_rate(&self, i2c : &mut T) -> Result<u16, Error<T>> {
         let mut ambient = [0, 0];
 
@@ -691,6 +733,10 @@ impl<T : WriteRead + Write> VL53L1X<T> {
     }
 
     /// Get the ranging status.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `i2c` - I2C instance used for communication.
     pub fn get_range_status(&self, i2c : &mut T) -> Result<RangeStatus, Error<T>> {
         
         let mut status = [0];
@@ -703,6 +749,10 @@ impl<T : WriteRead + Write> VL53L1X<T> {
     }
 
     /// Get the measure result object which is read in a single access
+    /// 
+    /// # Arguments
+    /// 
+    /// * `i2c` - I2C instance used for communication.
     pub fn get_result(&self, i2c : &mut T) -> Result<MeasureResult, Error<T>> {
         let mut result = [0; 17];
 
@@ -723,6 +773,7 @@ impl<T : WriteRead + Write> VL53L1X<T> {
     /// 
     /// # Arguments
     /// 
+    /// * `i2c` - I2C instance used for communication.
     /// * `offset` - The offset in millimeters.
     pub fn set_offset(&self, i2c : &mut T, offset : i16) -> Result<(), Error<T>> {
         self.write_bytes(i2c, Self::ALGO_PART_TO_PART_RANGE_OFFSET_MM, &(offset*4).to_be_bytes())?;
@@ -733,7 +784,11 @@ impl<T : WriteRead + Write> VL53L1X<T> {
         Ok(())
     }
 
-    /// Get the currently set offset correction in millimeters
+    /// Get the currently set offset correction in millimeters.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `i2c` - I2C instance used for communication.
     pub fn get_offset(&self, i2c : &mut T) -> Result<i16, Error<T>> {
         
         let mut offset = [0, 0];
@@ -751,6 +806,7 @@ impl<T : WriteRead + Write> VL53L1X<T> {
     /// 
     /// # Arguments
     /// 
+    /// * `i2c` - I2C instance used for communication.
     /// * `correction` - The number of photons reflected back from the cover glass in cps.
     pub fn set_cross_talk(&self, i2c : &mut T, correction : u16) -> Result<(), Error<T>> {
         self.write_bytes(i2c, Self::ALGO_CROSSTALK_COMPENSATION_X_PLANE_GRADIENT_KCPS, &[0, 0])?;
@@ -764,6 +820,10 @@ impl<T : WriteRead + Write> VL53L1X<T> {
     }
 
     /// Get the crosstalk correction value in cps.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `i2c` - I2C instance used for communication.
     pub fn get_cross_talk(&self, i2c : &mut T) -> Result<u16, Error<T>> {
         
         let mut correction = [0, 0];
@@ -779,6 +839,7 @@ impl<T : WriteRead + Write> VL53L1X<T> {
     /// 
     /// # Arguments
     /// 
+    /// * `i2c` - I2C instance used for communication.
     /// * `threshold` - The threshold to apply.
     pub fn set_distance_threshold(&self, i2c : &mut T, threshold : Threshold) -> Result<(), Error<T>> {
         let mut config = [0];
@@ -795,6 +856,10 @@ impl<T : WriteRead + Write> VL53L1X<T> {
     }
 
     /// Get the currently set distance threshold.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `i2c` - I2C instance used for communication.
     pub fn get_distance_threshold(&self, i2c : &mut T) -> Result<Threshold, Error<T>> {
         let mut config = [0];
 
@@ -820,6 +885,7 @@ impl<T : WriteRead + Write> VL53L1X<T> {
     /// 
     /// # Arguments
     /// 
+    /// * `i2c` - I2C instance used for communication.
     /// * `roi` - The ROI to apply.
     pub fn set_roi(&self, i2c : &mut T, mut roi : ROI) -> Result<(), Error<T>> {
         
@@ -851,6 +917,10 @@ impl<T : WriteRead + Write> VL53L1X<T> {
     }
 
     /// Get the currenly set ROI.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `i2c` - I2C instance used for communication.
     pub fn get_roi(&self, i2c : &mut T) -> Result<ROI, Error<T>> {
         
         let mut config = [0];
@@ -868,12 +938,17 @@ impl<T : WriteRead + Write> VL53L1X<T> {
     /// 
     /// # Arguments
     /// 
+    /// * `i2c` - I2C instance used for communication.
     /// * `center` - Tne ROI center to apply.
     pub fn set_roi_center(&self, i2c : &mut T, center : ROICenter) -> Result<(), Error<T>> {
         self.write_bytes(i2c, Self::ROI_CONFIG_USER_ROI_CENTRE_SPAD, &[center.spad])
     }
 
     /// Get the current ROI center.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `i2c` - I2C instance used for communication.
     pub fn get_roi_center(&self, i2c : &mut T) -> Result<ROICenter, Error<T>> {
 
         let mut center = [0];
@@ -888,12 +963,17 @@ impl<T : WriteRead + Write> VL53L1X<T> {
     /// 
     /// # Arguments
     /// 
+    /// * `i2c` - I2C instance used for communication.
     /// * `threshold` - The signal threshold.
     pub fn set_signal_threshold(&self, i2c : &mut T, threshold : u16) -> Result<(), Error<T>> {
         self.write_bytes(i2c, Self::RANGE_CONFIG_MIN_COUNT_RATE_RTN_LIMIT_MCPS, &(threshold >> 3).to_be_bytes())
     }
 
     /// Get the currently set signal threshold.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `i2c` - I2C instance used for communication.
     pub fn get_signal_threshold(&self, i2c : &mut T) -> Result<u16, Error<T>> {
         let mut threshold = [0, 0];
 
@@ -905,6 +985,7 @@ impl<T : WriteRead + Write> VL53L1X<T> {
     /// 
     /// # Arguments
     /// 
+    /// * `i2c` - I2C instance used for communication.
     /// * `threshold` - The sigma threshold.
     pub fn set_sigma_threshold(&self, i2c : &mut T, threshold : u16) -> Result<(), Error<T>> {
 
@@ -915,6 +996,10 @@ impl<T : WriteRead + Write> VL53L1X<T> {
         self.write_bytes(i2c, Self::RANGE_CONFIG_SIGMA_THRESH, &(threshold << 2).to_be_bytes())    }
 
     /// Get the currently set sigma threshold.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `i2c` - I2C instance used for communication.
     pub fn get_sigma_threshold(&self, i2c : &mut T) -> Result<u16, Error<T>> {
         let mut threshold = [0, 0];
 
@@ -925,6 +1010,10 @@ impl<T : WriteRead + Write> VL53L1X<T> {
     /// Perform temperature calibration of the sensor. 
     /// It is recommended to call this function any time the temperature might have changed by more than 8 deg Celsius
     /// without sensor ranging activity for an extended period.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `i2c` - I2C instance used for communication.
     pub fn calibrate_temperature(&self, i2c : &mut T) -> Result<(), Error<T>> {
         self.write_bytes(i2c, Self::VL53L1_VHV_CONFIG_TIMEOUT_MACROP_LOOP_BOUND, &0x81u16.to_be_bytes())?;
         self.write_bytes(i2c, 0x0Bu16, &0x92u16.to_be_bytes())?;
@@ -948,6 +1037,7 @@ impl<T : WriteRead + Write> VL53L1X<T> {
     /// 
     /// # Arguments
     /// 
+    /// * `i2c` - I2C instance used for communication.
     /// * `target_distance_mm` - Distance to the target in millimeters, ST recommends 100 mm.
     pub fn calibrate_offset(&self, i2c : &mut T, target_distance_mm : u16) -> Result<i16, Error<T>> {
         self.write_bytes(i2c, Self::ALGO_PART_TO_PART_RANGE_OFFSET_MM, &0u16.to_be_bytes())?;
@@ -979,8 +1069,9 @@ impl<T : WriteRead + Write> VL53L1X<T> {
     /// The function returns the crosstalk value found and set it as the new crosstalk.
     /// Target reflectance = grey 17%
     /// 
-    /// # Arguments
+    ///  Arguments
     /// 
+    /// * `i2c` - I2C instance used for communication.
     /// * `target_distance_mm` - Distance to the target in millimeters, .
     pub fn calibrate_cross_talk(&self, i2c : &mut T, target_distance_mm : u16) -> Result<u16, Error<T>> {
         self.write_bytes(i2c, Self::ALGO_CROSSTALK_COMPENSATION_PLANE_OFFSET_KCPS, &0u16.to_be_bytes())?;

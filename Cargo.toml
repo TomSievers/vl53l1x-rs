@@ -2,6 +2,13 @@
 name="vl53l1x-uld"
 version="0.1.0"
 edition="2021"
+authors=["Tom Sievers <tom.sievers13@gmail.com>"]
+license="MIT"
+description="Library source port of the ULD driver for the VL53L1X"
+repository="https://github.com/TomSievers/vl53l1x-rs"
+keywords=["vl53l1x"]
+readme="README.md"
+categories = ["embedded", "no-std"]
 
 [dependencies]
 embedded-hal="0.2.7"
