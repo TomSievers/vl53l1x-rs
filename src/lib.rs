@@ -35,20 +35,20 @@ where
     WriteError(<T as Write>::Error),
     /// Error occured during write read operation with underlying fault from I2C implementation.
     WriteReadError(<T as WriteRead>::Error),
-    /// The timing budget given is an invalid value.
+    /// The timing budget is invalid.
     InvalidTimingBudget,
-    /// The sigma threshold given is an invalid value.
+    /// The distance mode is invalid.
     InvalidDistanceMode,
-    /// The sigma threshold given is an invalid value.
+    /// The sigma threshold is invalid.
     InvalidSigmaThreshold,
 }
 
 /// Interrupt polarity.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Polarity {
-    /// Interrupt pin is high if the interrupt is active.
+    /// Interrupt pin is logic level high if the interrupt is active.
     ActiveHigh = 1,
-    /// Interrupt pin is high if the interrupt is active.
+    /// Interrupt pin is logic level low if the interrupt is active.
     ActiveLow = 0,
 }
 
@@ -64,9 +64,11 @@ impl From<u8> for Polarity {
 /// Distance measuring mode.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum DistanceMode {
-    /// Short mode max distance is limited to 1.3 m but has better ambient immunity.
+    /// Short distance mode. 
+    /// Maximum distance is limited to 1.3 m but has better ambient immunity.
     Short = 1,
-    /// Long mode can range up to 4 m in the dark with a 200 ms timing budget.
+    /// Long distance mode. 
+    /// Can range up to 4 m in the dark with a 200 ms timing budget.
     Long = 2,
 }
 
@@ -172,7 +174,7 @@ where
     <T as Write>::Error: Debug + PartialEq,
     <T as WriteRead>::Error: Debug + PartialEq,
 {
-    /// Create a new instance of the VL53L1X driver with the given address.
+    /// Create a new instance of the VL53L1X driver with the given I2C address.
     ///
     /// # Arguments
     ///
@@ -355,7 +357,7 @@ where
         Ok(())
     }
 
-    /// Set the i2c address of the current device in case multiple devices with the same address exists on the same bus.
+    /// Set the I2C address of the current device in case multiple devices with the same address exists on the same bus.
     ///
     /// # Arguments
     ///
@@ -453,7 +455,7 @@ where
     }
 
     /// Start a distance ranging operation.
-    /// The operation is continuous, the interrupt flag should be cleared between each interrupt to start a new distance measurement.
+    /// This operation is continuous, the interrupt flag should be cleared between each interrupt to start a new distance measurement.
     ///
     /// # Arguments
     ///
@@ -742,7 +744,7 @@ where
         Ok((200.0f32 * signal as f32 / spad_count as f32) as u16)
     }
 
-    /// Get the ambient signal per SPAD in kcps/SPAD.
+    /// Get the ambient signal per SPAD in kcps/SPAD where kcps stands for Kilo Count Per Second.
     ///
     /// # Arguments
     ///
@@ -764,7 +766,7 @@ where
         Ok((200.0f32 * ambient as f32 / spad_count as f32) as u16)
     }
 
-    /// Get the returned signal in kcps.
+    /// Get the returned signal in kcps (Kilo Count Per Second).
     ///
     /// # Arguments
     ///
@@ -781,7 +783,7 @@ where
         Ok(u16::from_be_bytes(signal) * 8)
     }
 
-    /// Get the count of currently enabled SPADs.77
+    /// Get the count of currently enabled SPADs.
     ///
     /// # Arguments
     ///
@@ -798,7 +800,7 @@ where
         Ok(u16::from_be_bytes(spad_count) >> 8)
     }
 
-    /// Get the ambient signal in kcps.
+    /// Get the ambient signal in kcps (Kilo Count Per Second). 
     ///
     /// # Arguments
     ///
@@ -826,7 +828,7 @@ where
         Ok(status.into())
     }
 
-    /// Get the measure result object which is read in a single access
+    /// Get a measurement result object which is read in a single access.
     ///
     /// # Arguments
     ///
@@ -845,7 +847,7 @@ where
         })
     }
 
-    /// Set the offset correction in millimeters.
+    /// Set a offset in millimeters which is aplied to the distance.
     ///
     /// # Arguments
     ///
@@ -864,7 +866,7 @@ where
         Ok(())
     }
 
-    /// Get the currently set offset correction in millimeters.
+    /// Get the current offset in millimeters.
     ///
     /// # Arguments
     ///
@@ -1042,7 +1044,8 @@ where
     }
 
     /// Set the new ROI center.
-    /// If the new ROI clips out of the border this function does not return an error but only when ranging is started will an error be returned
+    /// If the new ROI clips out of the border this function does not return an error 
+    /// but only when ranging is started will an error be returned.
     ///
     /// # Arguments
     ///
@@ -1128,7 +1131,7 @@ where
     }
 
     /// Perform temperature calibration of the sensor.
-    /// It is recommended to call this function any time the temperature might have changed by more than 8 deg Celsius
+    /// It is recommended to call this function any time the temperature might have changed by more than 8 degrees Celsius
     /// without sensor ranging activity for an extended period.
     ///
     /// # Arguments
@@ -1161,7 +1164,7 @@ where
 
     /// Perform offset calibration.
     /// The function returns the offset value found and sets it as the new offset.
-    /// Target reflectance = grey17%
+    /// Target reflectance = grey 17%
     ///
     /// # Arguments
     ///
@@ -1199,13 +1202,13 @@ where
     }
 
     /// Perform crosstalk calibration.
-    /// The function returns the crosstalk value found and set it as the new crosstalk.
+    /// The function returns the crosstalk value found and set it as the new crosstalk correction.
     /// Target reflectance = grey 17%
     ///
     ///  Arguments
     ///
     /// * `i2c` - I2C instance used for communication.
-    /// * `target_distance_mm` - Distance to the target in millimeters, .
+    /// * `target_distance_mm` - Distance to the target in millimeters, ST recommends 100 mm.
     pub fn calibrate_cross_talk(
         &self,
         i2c: &mut T,
