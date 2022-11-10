@@ -12,6 +12,7 @@ categories = ["embedded", "no-std"]
 
 [dependencies]
 embedded-hal="0.2.7"
+vl53l1-reg="0.1.0"
 
 [dev-dependencies]
 embedded-hal-mock = "0.8.0"

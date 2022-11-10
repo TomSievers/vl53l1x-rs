@@ -4,7 +4,7 @@
 use core::marker::PhantomData;
 
 use core::fmt::Debug;
-use embedded_hal::blocking::i2c::{Write, WriteRead};
+use embedded_hal::blocking::i2c::{WriteRead, WriteIter};
 use roi::{ROICenter, ROI};
 use threshold::{Threshold, Window};
 pub mod roi;
@@ -27,12 +27,12 @@ pub struct SWVersion {
 #[derive(Debug, PartialEq)]
 pub enum Error<T>
 where
-    T: Write + WriteRead,
-    <T as Write>::Error: Debug + PartialEq,
+    T: WriteIter + WriteRead,
+    <T as WriteIter>::Error: Debug + PartialEq,
     <T as WriteRead>::Error: Debug + PartialEq,
 {
     /// Error occured during write operation with underlying fault from I2C implementation.
-    WriteError(<T as Write>::Error),
+    WriteError(<T as WriteIter>::Error),
     /// Error occured during write read operation with underlying fault from I2C implementation.
     WriteReadError(<T as WriteRead>::Error),
     /// The timing budget given is an invalid value.
@@ -155,11 +155,13 @@ pub struct MeasureResult {
 /// Default I2C address for VL53L1X.
 pub const DEFAULT_ADDRESS: u8 = 0x29;
 
+use vl53l1_reg::Index as Register;
+
 /// Instance of a single VL53L1X driver.
 pub struct VL53L1X<T>
 where
-    T: Write + WriteRead,
-    <T as Write>::Error: Debug + PartialEq,
+    T: WriteIter + WriteRead,
+    <T as WriteIter>::Error: Debug + PartialEq,
     <T as WriteRead>::Error: Debug + PartialEq,
 {
     _i2c: PhantomData<T>,
@@ -168,8 +170,8 @@ where
 
 impl<T> VL53L1X<T>
 where
-    T: Write + WriteRead,
-    <T as Write>::Error: Debug + PartialEq,
+    T: WriteIter + WriteRead,
+    <T as WriteIter>::Error: Debug + PartialEq,
     <T as WriteRead>::Error: Debug + PartialEq,
 {
     /// Create a new instance of the VL53L1X driver with the given address.
@@ -193,50 +195,6 @@ where
             revision: 0,
         }
     }
-
-    const VL53L1_I2C_SLAVE_DEVICE_ADDRESS: u16 = 0x01;
-    const SYSTEM_INTERRUPT_CLEAR: u16 = 0x86;
-    const GPIO_HV_MUX_CTRL: u16 = 0x30;
-    const SYSTEM_MODE_START: u16 = 0x87;
-    const GPIO_TIO_HV_STATE: u16 = 0x31;
-    const RANGE_CONFIG_TIMEOUT_MACROP_A_HI: u16 = 0x5E;
-    const RANGE_CONFIG_TIMEOUT_MACROP_B_HI: u16 = 0x61;
-    const PHASECAL_CONFIG_TIMEOUT_MACROP: u16 = 0x4B;
-    const RANGE_CONFIG_VCSEL_PERIOD_A: u16 = 0x60;
-    const RANGE_CONFIG_VCSEL_PERIOD_B: u16 = 0x63;
-    const RANGE_CONFIG_VALID_PHASE_HIGH: u16 = 0x69;
-    const SD_CONFIG_WOI_SD0: u16 = 0x78;
-    const SD_CONFIG_INITIAL_PHASE_SD0: u16 = 0x7A;
-    const VL53L1_RESULT_OSC_CALIBRATE_VAL: u16 = 0xDE;
-    const VL53L1_SYSTEM_INTERMEASUREMENT_PERIOD: u16 = 0x6C;
-    const VL53L1_FIRMWARE_SYSTEM_STATUS: u16 = 0xE5;
-    const VL53L1_IDENTIFICATION_MODEL_ID: u16 = 0x10F;
-    const VL53L1_RESULT_FINAL_CROSSTALK_CORRECTED_RANGE_MM_SD0: u16 = 0x96;
-    const VL53L1_RESULT_PEAK_SIGNAL_COUNT_RATE_CROSSTALK_CORRECTED_MCPS_SD0: u16 = 0x98;
-    const VL53L1_RESULT_DSS_ACTUAL_EFFECTIVE_SPADS_SD0: u16 = 0x8C;
-    const RESULT_AMBIENT_COUNT_RATE_MCPS_SD: u16 = 0x8C;
-    const VL53L1_RESULT_RANGE_STATUS: u16 = 0x89;
-    const ALGO_PART_TO_PART_RANGE_OFFSET_MM: u16 = 0x1E;
-    const MM_CONFIG_INNER_OFFSET_MM: u16 = 0x20;
-    const MM_CONFIG_OUTER_OFFSET_MM: u16 = 0x22;
-    const ALGO_CROSSTALK_COMPENSATION_X_PLANE_GRADIENT_KCPS: u16 = 0x18;
-    const ALGO_CROSSTALK_COMPENSATION_Y_PLANE_GRADIENT_KCPS: u16 = 0x1A;
-    const ALGO_CROSSTALK_COMPENSATION_PLANE_OFFSET_KCPS: u16 = 0x16;
-    const SYSTEM_INTERRUPT_CONFIG_GPIO: u16 = 0x46;
-    const SYSTEM_THRESH_HIGH: u16 = 0x72;
-    const SYSTEM_THRESH_LOW: u16 = 0x74;
-    const VL53L1_ROI_CONFIG_MODE_ROI_CENTRE_SPAD: u16 = 0x13E;
-    const ROI_CONFIG_USER_ROI_CENTRE_SPAD: u16 = 0x7F;
-    const ROI_CONFIG_USER_ROI_REQUESTED_GLOBAL_XY_SIZE: u16 = 0x80;
-    const RANGE_CONFIG_MIN_COUNT_RATE_RTN_LIMIT_MCPS: u16 = 0x66;
-    const RANGE_CONFIG_SIGMA_THRESH: u16 = 0x64;
-    const VL53L1_VHV_CONFIG_TIMEOUT_MACROP_LOOP_BOUND: u16 = 0x08;
-    const I2C_CONFIG: u16 = 0x2d;
-    const I2C_GPIO_CONFIG: u16 = 0x2e;
-    const GPIO_CONFIG: u16 = 0x2f;
-
-    const DEFAULT_CONFG_START_ADDR: u16 = 0x30;
-    const DEFAULT_CONFG_END_ADDR: u16 = 0x87;
 
     const DEFAULT_CONFIG: [u8; 88] = [
         0x01, /* 0x30 : set bit 4 to 0 for active high interrupt and 1 for active low (bits 3:0 must be 0x1), use SetInterruptPolarity() */
@@ -329,26 +287,34 @@ where
         0x00, /* 0x87 : start ranging, use StartRanging() or StopRanging(), If you want an automatic start after VL53L1X_init() call, put 0x40 in location 0x87 */
     ];
 
-    fn write_bytes(&self, i2c: &mut T, address: u16, bytes: &[u8]) -> Result<(), Error<T>> {
-        let mut v = [0; 6];
+    /// Write bytes to register at address of variable length.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `address` - Address of the register to write to.
+    /// * `iter` - Iterator of bytes that will be written at the address.
+    /// * `i2c` - I2C instance used for communication.
+    pub fn write_bytes<B>(&self, i2c: &mut T, address: Register, iter: B) -> Result<(), Error<T>> 
+    where B : IntoIterator<Item = u8>
+    {
+        let address = (address as u16).to_be_bytes();
 
-        for (dst, src) in v.iter_mut().zip(address.to_be_bytes()) {
-            *dst = src;
-        }
-
-        for (dst, src) in v.iter_mut().skip(2).zip(bytes) {
-            *dst = *src;
-        }
-
-        if let Err(e) = i2c.write(self.address, &v[0..bytes.len() + 2]) {
+        if let Err(e) = i2c.write(self.address, address.into_iter().chain(iter)) {
             return Err(Error::WriteError(e));
         }
 
         Ok(())
     }
 
-    fn read_bytes(&self, i2c: &mut T, address: u16, bytes: &mut [u8]) -> Result<(), Error<T>> {
-        if let Err(e) = i2c.write_read(self.address, &address.to_be_bytes(), bytes) {
+    /// Read bytes from at the address into mutable slice
+    /// 
+    /// # Arguments
+    /// 
+    /// * `address` - Address of the register to read from.
+    /// * `bytes` - Mutable slice that read data will be written to.
+    /// * `i2c` - I2C instance used for communication.
+    pub fn read_bytes(&self, i2c: &mut T, address: Register, bytes: &mut [u8]) -> Result<(), Error<T>> {
+        if let Err(e) = i2c.write_read(self.address, &(address as u16).to_be_bytes(), bytes) {
             return Err(Error::WriteReadError(e));
         }
 
@@ -362,7 +328,7 @@ where
     /// * `new_address` - The new address to set for the current device.
     /// * `i2c` - I2C instance used for communication.
     pub fn set_address(&mut self, i2c: &mut T, new_address: u8) -> Result<(), Error<T>> {
-        self.write_bytes(i2c, Self::VL53L1_I2C_SLAVE_DEVICE_ADDRESS, &[new_address])?;
+        self.write_bytes(i2c, Register::I2C_SLAVE__DEVICE_ADDRESS, [new_address])?;
 
         self.address = new_address;
 
@@ -376,23 +342,17 @@ where
     /// * `io_config` - The io voltage that will be configured for the device.
     /// * `i2c` - I2C instance used for communication.
     pub fn init(&self, i2c: &mut T, io_config: IOVoltage) -> Result<(), Error<T>> {
-        self.write_bytes(i2c, Self::I2C_CONFIG, &[0])?;
+        self.write_bytes(i2c, Register::PAD_I2C_HV__CONFIG, [0])?;
 
         let io = match io_config {
             IOVoltage::Volt1_8 => 0,
             IOVoltage::Volt2_8 => 1,
         };
 
-        self.write_bytes(i2c, Self::GPIO_CONFIG, &[io])?;
-        self.write_bytes(i2c, Self::I2C_GPIO_CONFIG, &[io])?;
+        self.write_bytes(i2c, Register::GPIO_HV_PAD__CTRL, [io])?;
+        self.write_bytes(i2c, Register::PAD_I2C_HV__EXTSUP_CONFIG, [io])?;
 
-        for addr in Self::DEFAULT_CONFG_START_ADDR..Self::DEFAULT_CONFG_END_ADDR {
-            self.write_bytes(
-                i2c,
-                addr,
-                &[Self::DEFAULT_CONFIG[(addr - Self::DEFAULT_CONFG_START_ADDR) as usize]],
-            )?;
-        }
+        self.write_bytes(i2c, Register::GPIO_HV_MUX__CTRL, Self::DEFAULT_CONFIG)?;
 
         self.start_ranging(i2c)?;
 
@@ -403,10 +363,10 @@ where
 
         self.write_bytes(
             i2c,
-            Self::VL53L1_VHV_CONFIG_TIMEOUT_MACROP_LOOP_BOUND,
-            &[0x09],
+            Register::VHV_CONFIG__TIMEOUT_MACROP_LOOP_BOUND,
+            [0x09],
         )?;
-        self.write_bytes(i2c, 0x0B, &[0])?;
+        self.write_bytes(i2c, Register::VHV_CONFIG__INIT, [0])?;
 
         Ok(())
     }
@@ -418,7 +378,7 @@ where
     ///
     /// * `i2c` - I2C instance used for communication.
     pub fn clear_interrupt(&self, i2c: &mut T) -> Result<(), Error<T>> {
-        self.write_bytes(i2c, Self::SYSTEM_INTERRUPT_CLEAR, &[0x01])
+        self.write_bytes(i2c, Register::SYSTEM__INTERRUPT_CLEAR, [0x01])
     }
 
     /// Set polarity of the interrupt.
@@ -430,13 +390,13 @@ where
     pub fn set_interrupt_polarity(&self, i2c: &mut T, polarity: Polarity) -> Result<(), Error<T>> {
         let mut gpio_mux_hv = [0u8];
 
-        self.read_bytes(i2c, Self::GPIO_HV_MUX_CTRL, &mut gpio_mux_hv)?;
+        self.read_bytes(i2c, Register::GPIO_HV_MUX__CTRL, &mut gpio_mux_hv)?;
 
         gpio_mux_hv[0] &= 0xEF;
 
         gpio_mux_hv[0] |= (polarity as u8) << 4;
 
-        self.write_bytes(i2c, Self::GPIO_HV_MUX_CTRL, &gpio_mux_hv)
+        self.write_bytes(i2c, Register::GPIO_HV_MUX__CTRL, gpio_mux_hv)
     }
 
     /// Get the currently set interrupt polarity
@@ -447,7 +407,7 @@ where
     pub fn get_interrupt_polarity(&self, i2c: &mut T) -> Result<Polarity, Error<T>> {
         let mut gpio_mux_hv = [0u8];
 
-        self.read_bytes(i2c, Self::GPIO_HV_MUX_CTRL, &mut gpio_mux_hv)?;
+        self.read_bytes(i2c, Register::GPIO_HV_MUX__CTRL, &mut gpio_mux_hv)?;
 
         Ok((gpio_mux_hv[0] & 0x10).into())
     }
@@ -459,7 +419,7 @@ where
     ///
     /// * `i2c` - I2C instance used for communication.
     pub fn start_ranging(&self, i2c: &mut T) -> Result<(), Error<T>> {
-        self.write_bytes(i2c, Self::SYSTEM_MODE_START, &[0x40])
+        self.write_bytes(i2c, Register::SYSTEM__MODE_START, [0x40])
     }
 
     /// Stop an ongoing ranging operation.
@@ -468,7 +428,7 @@ where
     ///
     /// * `i2c` - I2C instance used for communication.
     pub fn stop_ranging(&self, i2c: &mut T) -> Result<(), Error<T>> {
-        self.write_bytes(i2c, Self::SYSTEM_MODE_START, &[0x00])
+        self.write_bytes(i2c, Register::SYSTEM__MODE_START, [0x00])
     }
 
     /// Check if new ranging data is available by polling the device.
@@ -481,7 +441,7 @@ where
 
         let mut state = [0u8];
 
-        self.read_bytes(i2c, Self::GPIO_TIO_HV_STATE, &mut state)?;
+        self.read_bytes(i2c, Register::GPIO__TIO_HV_STATUS, &mut state)?;
 
         if (state[0] & 0x01) == polarity {
             return Ok(true);
@@ -523,13 +483,13 @@ where
 
         self.write_bytes(
             i2c,
-            Self::RANGE_CONFIG_TIMEOUT_MACROP_A_HI,
-            &a.to_be_bytes(),
+            Register::RANGE_CONFIG__TIMEOUT_MACROP_A_HI,
+            a.to_be_bytes(),
         )?;
         self.write_bytes(
             i2c,
-            Self::RANGE_CONFIG_TIMEOUT_MACROP_B_HI,
-            &b.to_be_bytes(),
+            Register::RANGE_CONFIG__TIMEOUT_MACROP_B_HI,
+            b.to_be_bytes(),
         )?;
 
         Ok(())
@@ -543,7 +503,7 @@ where
     pub fn get_timing_budget_ms(&self, i2c: &mut T) -> Result<u16, Error<T>> {
         let mut a = [0u8, 0];
 
-        self.read_bytes(i2c, Self::RANGE_CONFIG_TIMEOUT_MACROP_A_HI, &mut a)?;
+        self.read_bytes(i2c, Register::RANGE_CONFIG__TIMEOUT_MACROP_A_HI, &mut a)?;
 
         Ok(match u16::from_be_bytes(a) {
             0x001D => 15,
@@ -573,29 +533,29 @@ where
 
         self.write_bytes(
             i2c,
-            Self::PHASECAL_CONFIG_TIMEOUT_MACROP,
-            &timeout.to_be_bytes(),
+            Register::PHASECAL_CONFIG__TIMEOUT_MACROP,
+            timeout.to_be_bytes(),
         )?;
         self.write_bytes(
             i2c,
-            Self::RANGE_CONFIG_VCSEL_PERIOD_A,
-            &vcsel_a.to_be_bytes(),
+            Register::RANGE_CONFIG__VCSEL_PERIOD_A,
+            vcsel_a.to_be_bytes(),
         )?;
         self.write_bytes(
             i2c,
-            Self::RANGE_CONFIG_VCSEL_PERIOD_B,
-            &vcsel_b.to_be_bytes(),
+            Register::RANGE_CONFIG__VCSEL_PERIOD_B,
+            vcsel_b.to_be_bytes(),
         )?;
         self.write_bytes(
             i2c,
-            Self::RANGE_CONFIG_VALID_PHASE_HIGH,
-            &phase.to_be_bytes(),
+            Register::RANGE_CONFIG__VALID_PHASE_HIGH,
+            phase.to_be_bytes(),
         )?;
-        self.write_bytes(i2c, Self::SD_CONFIG_WOI_SD0, &woi_sd0.to_be_bytes())?;
+        self.write_bytes(i2c, Register::SD_CONFIG__WOI_SD0, woi_sd0.to_be_bytes())?;
         self.write_bytes(
             i2c,
-            Self::SD_CONFIG_INITIAL_PHASE_SD0,
-            &phase_sd0.to_be_bytes(),
+            Register::SD_CONFIG__INITIAL_PHASE_SD0,
+            phase_sd0.to_be_bytes(),
         )?;
 
         self.set_timing_budget_ms(i2c, tb)?;
@@ -610,7 +570,7 @@ where
     /// * `i2c` - I2C instance used for communication.
     pub fn get_distance_mode(&self, i2c: &mut T) -> Result<DistanceMode, Error<T>> {
         let mut out = [0u8];
-        self.read_bytes(i2c, Self::PHASECAL_CONFIG_TIMEOUT_MACROP, &mut out)?;
+        self.read_bytes(i2c, Register::PHASECAL_CONFIG__TIMEOUT_MACROP, &mut out)?;
 
         if out[0] == 0x14 {
             Ok(DistanceMode::Short)
@@ -635,7 +595,7 @@ where
     ) -> Result<(), Error<T>> {
         let mut clock_pll = [0u8, 0];
 
-        self.read_bytes(i2c, Self::VL53L1_RESULT_OSC_CALIBRATE_VAL, &mut clock_pll)?;
+        self.read_bytes(i2c, Register::RESULT__OSC_CALIBRATE_VAL, &mut clock_pll)?;
 
         let clock_pll = u16::from_be_bytes(clock_pll) & 0x3FF;
 
@@ -643,8 +603,8 @@ where
 
         self.write_bytes(
             i2c,
-            Self::VL53L1_SYSTEM_INTERMEASUREMENT_PERIOD,
-            &val.to_be_bytes(),
+            Register::SYSTEM__INTERMEASUREMENT_PERIOD,
+            val.to_be_bytes(),
         )?;
 
         Ok(())
@@ -659,13 +619,13 @@ where
         let mut clock_pll = [0u8, 0];
         let mut period = [0u8, 0, 0, 0];
 
-        self.read_bytes(i2c, Self::VL53L1_RESULT_OSC_CALIBRATE_VAL, &mut clock_pll)?;
+        self.read_bytes(i2c, Register::RESULT__OSC_CALIBRATE_VAL, &mut clock_pll)?;
 
         let clock_pll = u16::from_be_bytes(clock_pll) & 0x3FF;
 
         self.read_bytes(
             i2c,
-            Self::VL53L1_SYSTEM_INTERMEASUREMENT_PERIOD,
+            Register::SYSTEM__INTERMEASUREMENT_PERIOD,
             &mut period,
         )?;
 
@@ -681,7 +641,7 @@ where
     /// * `i2c` - I2C instance used for communication.
     pub fn is_booted(&self, i2c: &mut T) -> Result<bool, Error<T>> {
         let mut status = [0u8];
-        self.read_bytes(i2c, Self::VL53L1_FIRMWARE_SYSTEM_STATUS, &mut status)?;
+        self.read_bytes(i2c, Register::FIRMWARE__SYSTEM_STATUS, &mut status)?;
 
         Ok(status[0] == 1)
     }
@@ -694,7 +654,7 @@ where
     pub fn get_sensor_id(&self, i2c: &mut T) -> Result<u16, Error<T>> {
         let mut id = [0u8, 0];
 
-        self.read_bytes(i2c, Self::VL53L1_IDENTIFICATION_MODEL_ID, &mut id)?;
+        self.read_bytes(i2c, Register::IDENTIFICATION__MODEL_ID, &mut id)?;
 
         Ok(u16::from_be_bytes(id))
     }
@@ -709,7 +669,7 @@ where
 
         self.read_bytes(
             i2c,
-            Self::VL53L1_RESULT_FINAL_CROSSTALK_CORRECTED_RANGE_MM_SD0,
+            Register::RESULT__FINAL_CROSSTALK_CORRECTED_RANGE_MM_SD0,
             &mut distance,
         )?;
 
@@ -727,12 +687,12 @@ where
 
         self.read_bytes(
             i2c,
-            Self::VL53L1_RESULT_PEAK_SIGNAL_COUNT_RATE_CROSSTALK_CORRECTED_MCPS_SD0,
+            Register::RESULT__PEAK_SIGNAL_COUNT_RATE_CROSSTALK_CORRECTED_MCPS_SD0,
             &mut signal,
         )?;
         self.read_bytes(
             i2c,
-            Self::VL53L1_RESULT_DSS_ACTUAL_EFFECTIVE_SPADS_SD0,
+            Register::RESULT__DSS_ACTUAL_EFFECTIVE_SPADS_SD0,
             &mut spad_count,
         )?;
 
@@ -753,10 +713,10 @@ where
 
         self.read_bytes(
             i2c,
-            Self::VL53L1_RESULT_DSS_ACTUAL_EFFECTIVE_SPADS_SD0,
+            Register::RESULT__DSS_ACTUAL_EFFECTIVE_SPADS_SD0,
             &mut spad_count,
         )?;
-        self.read_bytes(i2c, Self::RESULT_AMBIENT_COUNT_RATE_MCPS_SD, &mut ambient)?;
+        self.read_bytes(i2c, Register::RESULT__AMBIENT_COUNT_RATE_MCPS_SD0, &mut ambient)?;
 
         let spad_count = u16::from_be_bytes(spad_count);
         let ambient = u16::from_be_bytes(ambient);
@@ -774,7 +734,7 @@ where
 
         self.read_bytes(
             i2c,
-            Self::VL53L1_RESULT_PEAK_SIGNAL_COUNT_RATE_CROSSTALK_CORRECTED_MCPS_SD0,
+            Register::RESULT__PEAK_SIGNAL_COUNT_RATE_CROSSTALK_CORRECTED_MCPS_SD0,
             &mut signal,
         )?;
 
@@ -791,7 +751,7 @@ where
 
         self.read_bytes(
             i2c,
-            Self::VL53L1_RESULT_DSS_ACTUAL_EFFECTIVE_SPADS_SD0,
+            Register::RESULT__DSS_ACTUAL_EFFECTIVE_SPADS_SD0,
             &mut spad_count,
         )?;
 
@@ -806,7 +766,7 @@ where
     pub fn get_ambient_rate(&self, i2c: &mut T) -> Result<u16, Error<T>> {
         let mut ambient = [0, 0];
 
-        self.read_bytes(i2c, Self::RESULT_AMBIENT_COUNT_RATE_MCPS_SD, &mut ambient)?;
+        self.read_bytes(i2c, Register::RESULT__AMBIENT_COUNT_RATE_MCPS_SD0, &mut ambient)?;
 
         Ok(u16::from_be_bytes(ambient) * 8)
     }
@@ -819,7 +779,7 @@ where
     pub fn get_range_status(&self, i2c: &mut T) -> Result<RangeStatus, Error<T>> {
         let mut status = [0];
 
-        self.read_bytes(i2c, Self::VL53L1_RESULT_RANGE_STATUS, &mut status)?;
+        self.read_bytes(i2c, Register::RESULT__RANGE_STATUS, &mut status)?;
 
         let status = u8::from_be_bytes(status) & 0x1F;
 
@@ -834,7 +794,7 @@ where
     pub fn get_result(&self, i2c: &mut T) -> Result<MeasureResult, Error<T>> {
         let mut result = [0; 17];
 
-        self.read_bytes(i2c, Self::VL53L1_RESULT_RANGE_STATUS, &mut result)?;
+        self.read_bytes(i2c, Register::RESULT__RANGE_STATUS, &mut result)?;
 
         Ok(MeasureResult {
             status: (result[0] & 0x1F).into(),
@@ -854,12 +814,12 @@ where
     pub fn set_offset(&self, i2c: &mut T, offset: i16) -> Result<(), Error<T>> {
         self.write_bytes(
             i2c,
-            Self::ALGO_PART_TO_PART_RANGE_OFFSET_MM,
-            &(offset * 4).to_be_bytes(),
+            Register::ALGO__PART_TO_PART_RANGE_OFFSET_MM,
+            (offset * 4).to_be_bytes(),
         )?;
 
-        self.write_bytes(i2c, Self::MM_CONFIG_INNER_OFFSET_MM, &[0, 0])?;
-        self.write_bytes(i2c, Self::MM_CONFIG_OUTER_OFFSET_MM, &[0, 0])?;
+        self.write_bytes(i2c, Register::MM_CONFIG__INNER_OFFSET_MM, [0, 0])?;
+        self.write_bytes(i2c, Register::MM_CONFIG__OUTER_OFFSET_MM, [0, 0])?;
 
         Ok(())
     }
@@ -872,7 +832,7 @@ where
     pub fn get_offset(&self, i2c: &mut T) -> Result<i16, Error<T>> {
         let mut offset = [0, 0];
 
-        self.read_bytes(i2c, Self::ALGO_PART_TO_PART_RANGE_OFFSET_MM, &mut offset)?;
+        self.read_bytes(i2c, Register::ALGO__PART_TO_PART_RANGE_OFFSET_MM, &mut offset)?;
 
         let mut offset = u16::from_be_bytes(offset) << 3;
 
@@ -890,21 +850,21 @@ where
     pub fn set_cross_talk(&self, i2c: &mut T, correction: u16) -> Result<(), Error<T>> {
         self.write_bytes(
             i2c,
-            Self::ALGO_CROSSTALK_COMPENSATION_X_PLANE_GRADIENT_KCPS,
-            &[0, 0],
+            Register::ALGO__CROSSTALK_COMPENSATION_X_PLANE_GRADIENT_KCPS,
+            [0, 0],
         )?;
         self.write_bytes(
             i2c,
-            Self::ALGO_CROSSTALK_COMPENSATION_Y_PLANE_GRADIENT_KCPS,
-            &[0, 0],
+            Register::ALGO__CROSSTALK_COMPENSATION_Y_PLANE_GRADIENT_KCPS,
+            [0, 0],
         )?;
 
         let correction = (correction << 9) / 1000;
 
         self.write_bytes(
             i2c,
-            Self::ALGO_CROSSTALK_COMPENSATION_PLANE_OFFSET_KCPS,
-            &correction.to_be_bytes(),
+            Register::ALGO__CROSSTALK_COMPENSATION_PLANE_OFFSET_KCPS,
+            correction.to_be_bytes(),
         )?;
 
         Ok(())
@@ -920,7 +880,7 @@ where
 
         self.read_bytes(
             i2c,
-            Self::ALGO_CROSSTALK_COMPENSATION_PLANE_OFFSET_KCPS,
+            Register::ALGO__CROSSTALK_COMPENSATION_PLANE_OFFSET_KCPS,
             &mut correction,
         )?;
 
@@ -942,13 +902,13 @@ where
     ) -> Result<(), Error<T>> {
         let mut config = [0];
 
-        self.read_bytes(i2c, Self::SYSTEM_INTERRUPT_CONFIG_GPIO, &mut config)?;
+        self.read_bytes(i2c, Register::SYSTEM__INTERRUPT_CONFIG_GPIO, &mut config)?;
 
         let config = config[0] & 0x47 | (threshold.window as u8 & 0x07);
 
-        self.write_bytes(i2c, Self::SYSTEM_INTERRUPT_CONFIG_GPIO, &[config])?;
-        self.write_bytes(i2c, Self::SYSTEM_THRESH_HIGH, &threshold.high.to_be_bytes())?;
-        self.write_bytes(i2c, Self::SYSTEM_THRESH_LOW, &threshold.low.to_be_bytes())?;
+        self.write_bytes(i2c, Register::SYSTEM__INTERRUPT_CONFIG_GPIO, [config])?;
+        self.write_bytes(i2c, Register::SYSTEM__THRESH_HIGH, threshold.high.to_be_bytes())?;
+        self.write_bytes(i2c, Register::SYSTEM__THRESH_LOW, threshold.low.to_be_bytes())?;
 
         Ok(())
     }
@@ -961,15 +921,15 @@ where
     pub fn get_distance_threshold(&self, i2c: &mut T) -> Result<Threshold, Error<T>> {
         let mut config = [0];
 
-        self.read_bytes(i2c, Self::SYSTEM_INTERRUPT_CONFIG_GPIO, &mut config)?;
+        self.read_bytes(i2c, Register::SYSTEM__INTERRUPT_CONFIG_GPIO, &mut config)?;
 
         let window: Window = (config[0] & 0x07).into();
 
         let mut high = [0, 0];
         let mut low = [0, 0];
 
-        self.read_bytes(i2c, Self::SYSTEM_THRESH_HIGH, &mut high)?;
-        self.read_bytes(i2c, Self::SYSTEM_THRESH_LOW, &mut low)?;
+        self.read_bytes(i2c, Register::SYSTEM__THRESH_HIGH, &mut high)?;
+        self.read_bytes(i2c, Register::SYSTEM__THRESH_LOW, &mut low)?;
 
         Ok(Threshold {
             window,
@@ -993,7 +953,7 @@ where
 
         self.read_bytes(
             i2c,
-            Self::VL53L1_ROI_CONFIG_MODE_ROI_CENTRE_SPAD,
+            Register::ROI_CONFIG__MODE_ROI_CENTRE_SPAD,
             &mut center,
         )?;
 
@@ -1011,11 +971,11 @@ where
 
         let config = ((roi.height - 1) << 4 | (roi.width - 1)) as u8;
 
-        self.write_bytes(i2c, Self::ROI_CONFIG_USER_ROI_CENTRE_SPAD, &center)?;
+        self.write_bytes(i2c, Register::ROI_CONFIG__MODE_ROI_CENTRE_SPAD, center)?;
         self.write_bytes(
             i2c,
-            Self::ROI_CONFIG_USER_ROI_REQUESTED_GLOBAL_XY_SIZE,
-            &[config],
+            Register::ROI_CONFIG__USER_ROI_REQUESTED_GLOBAL_XY_SIZE,
+            [config],
         )?;
 
         Ok(())
@@ -1031,7 +991,7 @@ where
 
         self.read_bytes(
             i2c,
-            Self::ROI_CONFIG_USER_ROI_REQUESTED_GLOBAL_XY_SIZE,
+            Register::ROI_CONFIG__USER_ROI_REQUESTED_GLOBAL_XY_SIZE,
             &mut config,
         )?;
 
@@ -1049,7 +1009,7 @@ where
     /// * `i2c` - I2C instance used for communication.
     /// * `center` - Tne ROI center to apply.
     pub fn set_roi_center(&self, i2c: &mut T, center: ROICenter) -> Result<(), Error<T>> {
-        self.write_bytes(i2c, Self::ROI_CONFIG_USER_ROI_CENTRE_SPAD, &[center.spad])
+        self.write_bytes(i2c, Register::ROI_CONFIG__USER_ROI_CENTRE_SPAD, [center.spad])
     }
 
     /// Get the current ROI center.
@@ -1060,7 +1020,7 @@ where
     pub fn get_roi_center(&self, i2c: &mut T) -> Result<ROICenter, Error<T>> {
         let mut center = [0];
 
-        self.read_bytes(i2c, Self::ROI_CONFIG_USER_ROI_CENTRE_SPAD, &mut center)?;
+        self.read_bytes(i2c, Register::ROI_CONFIG__MODE_ROI_CENTRE_SPAD, &mut center)?;
 
         Ok(ROICenter { spad: center[0] })
     }
@@ -1074,8 +1034,8 @@ where
     pub fn set_signal_threshold(&self, i2c: &mut T, threshold: u16) -> Result<(), Error<T>> {
         self.write_bytes(
             i2c,
-            Self::RANGE_CONFIG_MIN_COUNT_RATE_RTN_LIMIT_MCPS,
-            &(threshold >> 3).to_be_bytes(),
+            Register::RANGE_CONFIG__MIN_COUNT_RATE_RTN_LIMIT_MCPS,
+            (threshold >> 3).to_be_bytes(),
         )
     }
 
@@ -1089,7 +1049,7 @@ where
 
         self.read_bytes(
             i2c,
-            Self::RANGE_CONFIG_MIN_COUNT_RATE_RTN_LIMIT_MCPS,
+            Register::RANGE_CONFIG__MIN_COUNT_RATE_RTN_LIMIT_MCPS,
             &mut threshold,
         )?;
 
@@ -1109,8 +1069,8 @@ where
 
         self.write_bytes(
             i2c,
-            Self::RANGE_CONFIG_SIGMA_THRESH,
-            &(threshold << 2).to_be_bytes(),
+            Register::RANGE_CONFIG__SIGMA_THRESH,
+            (threshold << 2).to_be_bytes(),
         )
     }
 
@@ -1122,7 +1082,7 @@ where
     pub fn get_sigma_threshold(&self, i2c: &mut T) -> Result<u16, Error<T>> {
         let mut threshold = [0, 0];
 
-        self.read_bytes(i2c, Self::RANGE_CONFIG_SIGMA_THRESH, &mut threshold)?;
+        self.read_bytes(i2c, Register::RANGE_CONFIG__SIGMA_THRESH, &mut threshold)?;
 
         Ok(u16::from_be_bytes(threshold) >> 2)
     }
@@ -1137,10 +1097,10 @@ where
     pub fn calibrate_temperature(&self, i2c: &mut T) -> Result<(), Error<T>> {
         self.write_bytes(
             i2c,
-            Self::VL53L1_VHV_CONFIG_TIMEOUT_MACROP_LOOP_BOUND,
-            &0x81u16.to_be_bytes(),
+            Register::VHV_CONFIG__TIMEOUT_MACROP_LOOP_BOUND,
+            0x81u16.to_be_bytes(),
         )?;
-        self.write_bytes(i2c, 0x0Bu16, &0x92u16.to_be_bytes())?;
+        self.write_bytes(i2c, Register::VHV_CONFIG__INIT, 0x92u16.to_be_bytes())?;
 
         self.start_ranging(i2c)?;
 
@@ -1151,10 +1111,10 @@ where
 
         self.write_bytes(
             i2c,
-            Self::VL53L1_VHV_CONFIG_TIMEOUT_MACROP_LOOP_BOUND,
-            &0x09u16.to_be_bytes(),
+            Register::VHV_CONFIG__TIMEOUT_MACROP_LOOP_BOUND,
+            0x09u16.to_be_bytes(),
         )?;
-        self.write_bytes(i2c, 0x0Bu16, &0u16.to_be_bytes())?;
+        self.write_bytes(i2c, Register::VHV_CONFIG__INIT, 0u16.to_be_bytes())?;
 
         Ok(())
     }
@@ -1170,11 +1130,11 @@ where
     pub fn calibrate_offset(&self, i2c: &mut T, target_distance_mm: u16) -> Result<i16, Error<T>> {
         self.write_bytes(
             i2c,
-            Self::ALGO_PART_TO_PART_RANGE_OFFSET_MM,
-            &0u16.to_be_bytes(),
+            Register::ALGO__PART_TO_PART_RANGE_OFFSET_MM,
+            0u16.to_be_bytes(),
         )?;
-        self.write_bytes(i2c, Self::MM_CONFIG_INNER_OFFSET_MM, &0u16.to_be_bytes())?;
-        self.write_bytes(i2c, Self::MM_CONFIG_OUTER_OFFSET_MM, &0u16.to_be_bytes())?;
+        self.write_bytes(i2c, Register::MM_CONFIG__INNER_OFFSET_MM, 0u16.to_be_bytes())?;
+        self.write_bytes(i2c, Register::MM_CONFIG__OUTER_OFFSET_MM, 0u16.to_be_bytes())?;
 
         self.start_ranging(i2c)?;
 
@@ -1213,8 +1173,8 @@ where
     ) -> Result<u16, Error<T>> {
         self.write_bytes(
             i2c,
-            Self::ALGO_CROSSTALK_COMPENSATION_PLANE_OFFSET_KCPS,
-            &0u16.to_be_bytes(),
+            Register::ALGO__CROSSTALK_COMPENSATION_PLANE_OFFSET_KCPS,
+            0u16.to_be_bytes(),
         )?;
 
         self.start_ranging(i2c)?;
@@ -1251,8 +1211,8 @@ where
 
         self.write_bytes(
             i2c,
-            Self::ALGO_CROSSTALK_COMPENSATION_PLANE_OFFSET_KCPS,
-            &config,
+            Register::ALGO__CROSSTALK_COMPENSATION_PLANE_OFFSET_KCPS,
+            config,
         )?;
 
         Ok(0)
