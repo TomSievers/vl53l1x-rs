@@ -1224,7 +1224,7 @@ mod tests {
 
     extern crate std;
 
-    use crate::{SWVersion, DEFAULT_ADDRESS, VL53L1X};
+    use crate::{SWVersion, DEFAULT_ADDRESS, VL53L1X, Register};
 
     use embedded_hal_mock::{
         i2c::{Mock as I2cMock, Transaction as I2cTransaction},
@@ -1251,8 +1251,8 @@ mod tests {
     fn set_address() {
         let new_address = 0x55;
 
-        let i2c_adr_cmd = VL53L1XMock::VL53L1_I2C_SLAVE_DEVICE_ADDRESS.to_be_bytes();
-        let clr_irq_cmd = VL53L1XMock::SYSTEM_INTERRUPT_CLEAR.to_be_bytes();
+        let i2c_adr_cmd = (Register::I2C_SLAVE__DEVICE_ADDRESS as u16).to_be_bytes();
+        let clr_irq_cmd = (Register::SYSTEM__INTERRUPT_CLEAR as u16).to_be_bytes();
 
         let expectations = [
             I2cTransaction::write(0x29, vec![i2c_adr_cmd[0], i2c_adr_cmd[1], new_address]),
@@ -1271,8 +1271,8 @@ mod tests {
     fn set_address_driver_failure() {
         let new_address = 0x55;
 
-        let i2c_adr_cmd = VL53L1XMock::VL53L1_I2C_SLAVE_DEVICE_ADDRESS.to_be_bytes();
-        let clr_irq_cmd = VL53L1XMock::SYSTEM_INTERRUPT_CLEAR.to_be_bytes();
+        let i2c_adr_cmd = (Register::I2C_SLAVE__DEVICE_ADDRESS as u16).to_be_bytes();
+        let clr_irq_cmd = (Register::SYSTEM__INTERRUPT_CLEAR as u16).to_be_bytes();
 
         let expectations = [
             I2cTransaction::write(0x29, vec![i2c_adr_cmd[0], i2c_adr_cmd[1], new_address])
@@ -1290,7 +1290,7 @@ mod tests {
 
     #[test]
     fn write_error_propegate() {
-        let clr_irq_cmd = VL53L1XMock::SYSTEM_INTERRUPT_CLEAR.to_be_bytes();
+        let clr_irq_cmd = (Register::SYSTEM__INTERRUPT_CLEAR as u16).to_be_bytes();
 
         let expectations =
             [
@@ -1316,7 +1316,7 @@ mod tests {
 
     #[test]
     fn write_read_error_propegate() {
-        let irq_dir_cmd = VL53L1XMock::GPIO_HV_MUX_CTRL.to_be_bytes();
+        let irq_dir_cmd = (Register::GPIO_HV_MUX__CTRL as u16).to_be_bytes();
 
         let expectations =
             [
