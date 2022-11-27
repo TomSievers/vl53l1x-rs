@@ -1,4 +1,4 @@
-//! Module containing region of interest definitions and implementations.
+//! Module containing region of interest definitions.
 
 /// Structure denoting a region of interest.
 pub struct ROI {
@@ -20,14 +20,19 @@ impl ROI {
     }
 }
 
-/// Structure denoting a region of interest center.
+/// Structure denoting the center of a region of interest.
 pub struct ROICenter {
-    /// The SPAD used as a center.
+    /// The SPAD used as center point.
     pub spad: u8,
 }
 
 impl ROICenter {
-    /// Create a new region of interest center at the given coordinate.
+    /// Create a new center point from the given coordinate.
+    /// 
+    /// # Arguments
+    ///
+    /// * `x` - Horizontal position of the center coordinate.
+    /// * `y` - Vertical position of the center coordinate.
     pub fn new(x: u8, y: u8) -> Self {
         let spad = if y > 7 {
             128 + (x << 3) + (15 - y)
