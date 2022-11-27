@@ -6,3 +6,15 @@
 This crate is a port of the [STM VL53L1X IMG009][driver-page] driver to native rust.
 
 [driver-page]: https://www.st.com/content/st_com/en/products/embedded-software/imaging-software/stsw-img009.html#overview
+
+## Minimal example
+
+Below is minimal example of using the current driver implementation.
+
+```rust
+use vl53l1x_uld;
+
+let i2c : I2CType = ...; //Create hardware specific I2C
+let vl53l1x : VL53L1X::new()
+
+```
