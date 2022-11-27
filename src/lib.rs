@@ -298,7 +298,7 @@ where
     {
         let address = (address as u16).to_be_bytes();
 
-        if let Err(e) = i2c.write(self.address, address.into_iter().chain(iter)) {
+        if let Err(e) = self.i2c.write(self.address, address.into_iter().chain(iter)) {
             return Err(Error::WriteError(e));
         }
 
@@ -351,7 +351,7 @@ where
         self.write_bytes(Register::GPIO_HV_PAD__CTRL, [io])?;
         self.write_bytes(Register::PAD_I2C_HV__EXTSUP_CONFIG, [io])?;
 
-        self.write_bytes(i2c, Register::GPIO_HV_MUX__CTRL, Self::DEFAULT_CONFIG)?;
+        self.write_bytes(Register::GPIO_HV_MUX__CTRL, Self::DEFAULT_CONFIG)?;
 
         self.start_ranging()?;
 
