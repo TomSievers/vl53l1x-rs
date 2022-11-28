@@ -1,17 +1,60 @@
 //! Port of the STM IMG009 Ultra Lite Driver for the VL53L1X.
 //! 
+//! # Features
+//! 
+//! This crate has one feature called `i2c-iter`. 
+//! This feature changes the communication implementation of the sensor. 
+//! With this feature enabled the I2C instance is expected to implement 
+//! the [`WriteIter`](embedded_hal::blocking::i2c::WriteIter) and [`WriteIterRead`](embedded_hal::blocking::i2c::WriteIterRead) traits instead of [`Write`](embedded_hal::blocking::i2c::Write) and [`WriteRead`]((embedded_hal::blocking::i2c::Write)) traits. 
+//! The iterator implementation has the advantage that a call to [`write_bytes`](crate::VL53L1X::write_bytes()) 
+//! is not limited to a slice of 4 bytes.
+//! 
 //! # Example
 //! 
 //! ```
 //! use vl53l1x_uld::{self, VL53L1X, IOVoltage, RangeStatus};
-//! use embedded_hal_mock::i2c::{Mock, Transaction};
-//! 
-//! let expectations = [
-//!     Transaction::write_read(0x29, vec![]),
-//! ];
-//! 
+//! # use embedded_hal_mock::i2c::{Mock, Transaction};
+//! # use cfg_if::cfg_if;
+//! #
+//! # fn create_i2c() -> Mock {
+//! #    let mut expectations = vec![
+//! #        Transaction::write_read(0x29, vec![0x01, 0x0F], vec![0xEA, 0xCC]),
+//! #        Transaction::write(0x29, vec![0x00, 0x2D, 0x00]),
+//! #        Transaction::write(0x29, vec![0x00, 0x2F, 0x01]),
+//! #        Transaction::write(0x29, vec![0x00, 0x2E, 0x01]),
+//! #    ];
+//! #
+//! #    cfg_if! {
+//! #        if #[cfg(feature = "i2c-iter")] {
+//! #            expectations.push(Transaction::write(0x29, vec![0x00, 0x30].iter().chain(VL53L1X::<Mock>::DEFAULT_CONFIG.iter()).cloned().collect()));
+//! #        } else {
+//! #            for (byte, address) in VL53L1X::<Mock>::DEFAULT_CONFIG.iter().zip(0x30u16..0x88) {
+//! #                let adrs = address.to_be_bytes();
+//! #                expectations.push(Transaction::write(0x29, vec![adrs[0], adrs[1], *byte]));
+//! #            }
+//! #        }
+//! #    }
+//! #
+//! #    expectations.append(&mut vec![
+//! #        Transaction::write(0x29, vec![0x00, 0x87, 0x40]),
+//! #        Transaction::write_read(0x29, vec![0x00, 0x30], vec![0x00]),
+//! #        Transaction::write_read(0x29, vec![0x00, 0x31], vec![0x01]),
+//! #        Transaction::write(0x29, vec![0x00, 0x86, 0x01]),
+//! #        Transaction::write(0x29, vec![0x00, 0x87, 0x00]),
+//! #        Transaction::write(0x29, vec![0x00, 0x08, 0x09]),
+//! #        Transaction::write(0x29, vec![0x00, 0x0B, 0x00]),
+//! #        Transaction::write(0x29, vec![0x00, 0x87, 0x40]),
+//! #        Transaction::write_read(0x29, vec![0x00, 0x30], vec![0x00]),
+//! #        Transaction::write_read(0x29, vec![0x00, 0x31], vec![0x01]),
+//! #        Transaction::write_read(0x29, vec![0x00, 0x89], vec![0x09]),
+//! #        Transaction::write_read(0x29, vec![0x00, 0x96], vec![0x00, 0x0F]),
+//! #    ]);
+//! #
+//! #    Mock::new(&expectations)
+//! # }
+//! #
 //! // Create hardware specific I2C instance.
-//! let i2c = Mock::new(&expectations);
+//! let i2c = create_i2c();
 //! // Create sensor with default address. 
 //! let mut vl = VL53L1X::new(i2c, vl53l1x_uld::DEFAULT_ADDRESS);
 //! 
@@ -26,7 +69,7 @@
 //! 
 //!     // Start a ranging operation, needed to retrieve a distance
 //!     vl.start_ranging().expect(ERR);
-//! 
+//!     
 //!     // Wait until distance data is ready to be read.
 //!     while !vl.is_data_ready().expect(ERR) {}
 //! 
@@ -233,7 +276,8 @@ T: Write + Read,
         }
     }
 
-    const DEFAULT_CONFIG: [u8; 88] = [
+    /// Default configuration used during initialization.
+    pub const DEFAULT_CONFIG: [u8; 88] = [
         0x01, /* 0x30 : set bit 4 to 0 for active high interrupt and 1 for active low (bits 3:0 must be 0x1), use SetInterruptPolarity() */
         0x02, /* 0x31 : bit 1 = interrupt depending on the polarity, use CheckForDataReady() */
         0x00, /* 0x32 : not user-modifiable */
@@ -399,8 +443,6 @@ T: Write + Read,
                 }
             }
         }
-
-        
 
         self.start_ranging()?;
 
