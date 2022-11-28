@@ -28,7 +28,7 @@ pub struct ROICenter {
 
 impl ROICenter {
     /// Create a new center point from the given coordinate.
-    /// 
+    ///
     /// # Arguments
     ///
     /// * `x` - Horizontal position of the center coordinate.

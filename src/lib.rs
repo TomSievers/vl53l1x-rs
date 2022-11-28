@@ -1,9 +1,50 @@
 //! Port of the STM IMG009 Ultra Lite Driver for the VL53L1X.
+//! 
+//! # Example
+//! 
+//! ```
+//! use vl53l1x_uld::{self, VL53L1X, IOVoltage, RangeStatus};
+//! use embedded_hal_mock::i2c::{Mock, Transaction};
+//! 
+//! let expectations = [
+//!     Transaction::write_read(0x29, vec![]),
+//! ];
+//! 
+//! // Create hardware specific I2C instance.
+//! let i2c = Mock::new(&expectations);
+//! // Create sensor with default address. 
+//! let mut vl = VL53L1X::new(i2c, vl53l1x_uld::DEFAULT_ADDRESS);
+//! 
+//! const ERR : &str = "Failed to communicate";
+//! 
+//! // Check if the sensor id is correct.
+//! if (vl.get_sensor_id().expect(ERR) == 0xEACC)
+//! {
+//!     // Initialize the sensor before any usage.
+//!     // Set the voltage of the IO pins to be 2.8 volts
+//!     vl.init(IOVoltage::Volt2_8).expect(ERR);
+//! 
+//!     // Start a ranging operation, needed to retrieve a distance
+//!     vl.start_ranging().expect(ERR);
+//! 
+//!     // Wait until distance data is ready to be read.
+//!     while !vl.is_data_ready().expect(ERR) {}
+//! 
+//!     // Check if ditance measurement is valid.
+//!     if (vl.get_range_status().expect(ERR) == RangeStatus::Valid)
+//!     {
+//!         // Retrieve measured distance.
+//!         let distance = vl.get_distance().expect(ERR);
+//!     }
+//! }
+//! 
+//! 
+//! ```
 #![no_std]
 #![warn(missing_docs)]
 
 use core::fmt::Debug;
-use embedded_hal::blocking::i2c::{WriteRead, WriteIter};
+use embedded_hal::blocking::i2c::{WriteIter, WriteRead};
 use roi::{ROICenter, ROI};
 use threshold::{Threshold, Window};
 pub mod roi;
@@ -63,10 +104,10 @@ impl From<u8> for Polarity {
 /// Distance measuring mode.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum DistanceMode {
-    /// Short distance mode. 
+    /// Short distance mode.
     /// Maximum distance is limited to 1.3 m but has better ambient immunity.
     Short = 1,
-    /// Long distance mode. 
+    /// Long distance mode.
     /// Can range up to 4 m in the dark with a 200 ms timing budget.
     Long = 2,
 }
@@ -180,11 +221,8 @@ where
     /// # Arguments
     ///
     /// * `address` - The address to use for communication with the VL53L1X.
-    pub fn new(i2c : T, address: u8) -> VL53L1X<T> {
-        VL53L1X {
-            i2c,
-            address,
-        }
+    pub fn new(i2c: T, address: u8) -> VL53L1X<T> {
+        VL53L1X { i2c, address }
     }
 
     /// Get the driver version.
@@ -289,18 +327,22 @@ where
     ];
 
     /// Write bytes to register at address of variable length.
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `address` - Address of the register to write to.
     /// * `iter` - Iterator of bytes that will be written at the address.
     /// * `i2c` - I2C instance used for communication.
-    pub fn write_bytes<B>(&mut self, address: Register, iter: B) -> Result<(), Error<T>> 
-    where B : IntoIterator<Item = u8>
+    pub fn write_bytes<B>(&mut self, address: Register, iter: B) -> Result<(), Error<T>>
+    where
+        B: IntoIterator<Item = u8>,
     {
         let address = (address as u16).to_be_bytes();
 
-        if let Err(e) = self.i2c.write(self.address, address.into_iter().chain(iter)) {
+        if let Err(e) = self
+            .i2c
+            .write(self.address, address.into_iter().chain(iter))
+        {
             return Err(Error::WriteError(e));
         }
 
@@ -308,14 +350,17 @@ where
     }
 
     /// Read bytes from at the address into mutable slice
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `address` - Address of the register to read from.
     /// * `bytes` - Mutable slice that read data will be written to.
     /// * `i2c` - I2C instance used for communication.
     pub fn read_bytes(&mut self, address: Register, bytes: &mut [u8]) -> Result<(), Error<T>> {
-        if let Err(e) = self.i2c.write_read(self.address, &(address as u16).to_be_bytes(), bytes) {
+        if let Err(e) = self
+            .i2c
+            .write_read(self.address, &(address as u16).to_be_bytes(), bytes)
+        {
             return Err(Error::WriteReadError(e));
         }
 
@@ -362,10 +407,7 @@ where
         self.clear_interrupt()?;
         self.stop_ranging()?;
 
-        self.write_bytes(
-            Register::VHV_CONFIG__TIMEOUT_MACROP_LOOP_BOUND,
-            [0x09],
-        )?;
+        self.write_bytes(Register::VHV_CONFIG__TIMEOUT_MACROP_LOOP_BOUND, [0x09])?;
         self.write_bytes(Register::VHV_CONFIG__INIT, [0])?;
 
         Ok(())
@@ -481,14 +523,8 @@ where
             },
         };
 
-        self.write_bytes(
-            Register::RANGE_CONFIG__TIMEOUT_MACROP_A_HI,
-            a.to_be_bytes(),
-        )?;
-        self.write_bytes(
-            Register::RANGE_CONFIG__TIMEOUT_MACROP_B_HI,
-            b.to_be_bytes(),
-        )?;
+        self.write_bytes(Register::RANGE_CONFIG__TIMEOUT_MACROP_A_HI, a.to_be_bytes())?;
+        self.write_bytes(Register::RANGE_CONFIG__TIMEOUT_MACROP_B_HI, b.to_be_bytes())?;
 
         Ok(())
     }
@@ -581,10 +617,7 @@ where
     ///
     /// * `i2c` - I2C instance used for communication.
     /// * `milliseconds` - The number of milliseconds used for the inter measurement period.
-    pub fn set_inter_measurement_period_ms(
-        &mut self,
-        milliseconds: u16,
-    ) -> Result<(), Error<T>> {
+    pub fn set_inter_measurement_period_ms(&mut self, milliseconds: u16) -> Result<(), Error<T>> {
         let mut clock_pll = [0u8, 0];
 
         self.read_bytes(Register::RESULT__OSC_CALIBRATE_VAL, &mut clock_pll)?;
@@ -593,10 +626,7 @@ where
 
         let val = ((clock_pll * milliseconds) as f32 * 1.075f32) as u32;
 
-        self.write_bytes(
-            Register::SYSTEM__INTERMEASUREMENT_PERIOD,
-            val.to_be_bytes(),
-        )?;
+        self.write_bytes(Register::SYSTEM__INTERMEASUREMENT_PERIOD, val.to_be_bytes())?;
 
         Ok(())
     }
@@ -614,10 +644,7 @@ where
 
         let clock_pll = u16::from_be_bytes(clock_pll) & 0x3FF;
 
-        self.read_bytes(
-            Register::SYSTEM__INTERMEASUREMENT_PERIOD,
-            &mut period,
-        )?;
+        self.read_bytes(Register::SYSTEM__INTERMEASUREMENT_PERIOD, &mut period)?;
 
         let period = u32::from_be_bytes(period);
 
@@ -742,7 +769,7 @@ where
         Ok(u16::from_be_bytes(spad_count) >> 8)
     }
 
-    /// Get the ambient signal in kcps (Kilo Count Per Second). 
+    /// Get the ambient signal in kcps (Kilo Count Per Second).
     ///
     /// # Arguments
     ///
@@ -874,10 +901,7 @@ where
     ///
     /// * `i2c` - I2C instance used for communication.
     /// * `threshold` - The threshold to apply.
-    pub fn set_distance_threshold(
-        &mut self,
-        threshold: Threshold,
-    ) -> Result<(), Error<T>> {
+    pub fn set_distance_threshold(&mut self, threshold: Threshold) -> Result<(), Error<T>> {
         let mut config = [0];
 
         self.read_bytes(Register::SYSTEM__INTERRUPT_CONFIG_GPIO, &mut config)?;
@@ -929,10 +953,7 @@ where
 
         let mut center = [0];
 
-        self.read_bytes(
-            Register::ROI_CONFIG__MODE_ROI_CENTRE_SPAD,
-            &mut center,
-        )?;
+        self.read_bytes(Register::ROI_CONFIG__MODE_ROI_CENTRE_SPAD, &mut center)?;
 
         if roi.width > 16 {
             roi.width = 16;
@@ -977,7 +998,7 @@ where
     }
 
     /// Set the new ROI center.
-    /// If the new ROI clips out of the border this function does not return an error 
+    /// If the new ROI clips out of the border this function does not return an error
     /// but only when ranging is started will an error be returned.
     ///
     /// # Arguments
@@ -1136,10 +1157,7 @@ where
     ///
     /// * `i2c` - I2C instance used for communication.
     /// * `target_distance_mm` - Distance to the target in millimeters, ST recommends 100 mm.
-    pub fn calibrate_cross_talk(
-        &mut self,
-        target_distance_mm: u16
-    ) -> Result<u16, Error<T>> {
+    pub fn calibrate_cross_talk(&mut self, target_distance_mm: u16) -> Result<u16, Error<T>> {
         self.write_bytes(
             Register::ALGO__CROSSTALK_COMPENSATION_PLANE_OFFSET_KCPS,
             0u16.to_be_bytes(),
@@ -1191,7 +1209,7 @@ mod tests {
 
     extern crate std;
 
-    use crate::{SWVersion, DEFAULT_ADDRESS, VL53L1X, Register};
+    use crate::{Register, SWVersion, DEFAULT_ADDRESS, VL53L1X};
 
     use embedded_hal_mock::{
         i2c::{Mock as I2cMock, Transaction as I2cTransaction},
