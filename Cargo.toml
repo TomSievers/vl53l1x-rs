@@ -1,6 +1,6 @@
 [package]
 name="vl53l1x-uld"
-version="1.0.0"
+version="2.0.0"
 edition="2021"
 authors=["Tom Sievers <tom.sievers13@gmail.com>"]
 license="MIT"
