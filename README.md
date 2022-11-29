@@ -34,7 +34,7 @@ if (vl.get_sensor_id().expect(ERR) == 0xEACC)
     // Wait until distance data is ready to be read.
     while !vl.is_data_ready().expect(ERR) {}
 
-    // Check if ditance measurement is valid.
+    // Check if distance measurement is valid.
     if (vl.get_range_status().expect(ERR) == RangeStatus::Valid)
     {
         // Retrieve measured distance.
