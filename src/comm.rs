@@ -1,39 +1,48 @@
 //! Traits and implementations needed for I2C communication.
-use core::fmt::Debug;
 use cfg_if::cfg_if;
+use core::fmt::Debug;
 
 /// Trait to write registers for the VL53L1X.
 pub trait Write {
     /// Error return type.
-    type Error : Debug;
-    /// Write registers with the given bytes. 
+    type Error: Debug;
+    /// Write registers with the given bytes.
     /// (Number of bytes is limited to 4 for non iterator implementations)
-    /// 
+    ///
     /// # Arguments
     ///
     /// * `address` - The i2c address.
     /// * `register` - The register to write to (Auto increments if more than 1 byte is written).
     /// * `bytes` - The bytes to be written at the given address.
-    fn write_registers(&mut self, address: u8, register: [u8; 2], bytes: &[u8]) -> Result<(), Self::Error>;
-    
+    fn write_registers(
+        &mut self,
+        address: u8,
+        register: [u8; 2],
+        bytes: &[u8],
+    ) -> Result<(), Self::Error>;
 }
 
 /// Trait to read a registers for the VL53L1X.
 pub trait Read {
     /// Error return type.
-    type Error : Debug;
+    type Error: Debug;
     /// Read registers into the given bytes.
-    /// 
+    ///
     /// * `address` - The i2c address.
     /// * `register` - The register to read from (Auto increments if more than 1 byte is read).
     /// * `bytes` - The slice into which the read data will be put.
-    fn read_registers(&mut self, address: u8, register: [u8; 2], bytes: &mut [u8]) -> Result<(), Self::Error>;
+    fn read_registers(
+        &mut self,
+        address: u8,
+        register: [u8; 2],
+        bytes: &mut [u8],
+    ) -> Result<(), Self::Error>;
 }
 
 cfg_if! {
     if #[cfg(feature = "i2c-iter")] {
         use embedded_hal::blocking::i2c::{WriteIter, WriteIterRead};
-        impl<I2C> Write for I2C 
+        impl<I2C> Write for I2C
         where I2C : WriteIter,
             <I2C as WriteIter>::Error : Debug
         {
@@ -44,7 +53,7 @@ cfg_if! {
             }
         }
 
-        impl<I2C> Read for I2C 
+        impl<I2C> Read for I2C
         where I2C : WriteIterRead,
             <I2C as WriteIterRead>::Error : Debug
         {
@@ -55,7 +64,7 @@ cfg_if! {
         }
     } else {
         use embedded_hal::blocking::i2c::{Write as I2CWrite, WriteRead};
-        impl<I2C> Write for I2C 
+        impl<I2C> Write for I2C
         where I2C : I2CWrite,
             <I2C as I2CWrite>::Error : Debug
         {
@@ -73,7 +82,7 @@ cfg_if! {
             }
         }
 
-        impl<I2C> Read for I2C 
+        impl<I2C> Read for I2C
         where I2C : WriteRead,
             <I2C as WriteRead>::Error : Debug
         {
@@ -82,5 +91,5 @@ cfg_if! {
                 self.write_read(address, &register, bytes)
             }
         }
-    }    
+    }
 }
