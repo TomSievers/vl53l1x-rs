@@ -1,23 +1,18 @@
-#![no_std]
-#![no_main]
-
 use core::fmt::Debug;
+use linux_embedded_hal::{i2cdev::linux::LinuxI2CError, I2cdev};
+use vl53l1x_uld::{
+    self,
+    comm::{Read, Write},
+    IOVoltage, RangeStatus, VL53L1X,
+};
 
-use panic_probe as _;
-use defmt_rtt as _;
-use cortex_m_rt::entry;
-use hal::{rcc::RccExt, prelude::*, pwr::PwrExt, time::Hertz, i2c};
-use stm32l4xx_hal::{self as hal, pac};
-use vl53l1x_uld::{self, VL53L1X, IOVoltage, RangeStatus, comm::{Read, Write}};
-
-fn measure_long_distance<I2C, E>(mut vl : VL53L1X<I2C>) -> Result<(), vl53l1x_uld::Error<E>>
+fn measure_long_distance<I2C, E>(mut vl: VL53L1X<I2C>) -> Result<(), vl53l1x_uld::Error<E>>
 where
-    E : Debug,
-    I2C : Read<Error = E> + Write<Error = E>
+    E: Debug,
+    I2C: Read<Error = E> + Write<Error = E>,
 {
     // Ensure the correct device is connected
-    if vl.get_sensor_id()? == 0xEACC
-    {
+    if vl.get_sensor_id()? == 0xEACC {
         // Initialize the device.
         vl.init(IOVoltage::Volt2_8)?;
 
@@ -42,7 +37,7 @@ where
 
             if res.status == RangeStatus::Valid {
                 // Print distance.
-                defmt::println!("{}", res.distance_mm);
+                println!("{}", res.distance_mm);
             }
 
             // Clear interrupt to start next measurement
@@ -52,25 +47,12 @@ where
     Ok(())
 }
 
-#[entry]
-fn main() -> ! {
-    let dp = pac::Peripherals::take().expect("");
-    let mut rcc = dp.RCC.constrain();
-    let mut flash = dp.FLASH.constrain();
-    let mut pwr = dp.PWR.constrain(&mut rcc.apb1r1);
-    let clocks = rcc.cfgr.freeze(&mut flash.acr, &mut pwr);
-
-    let mut gpioa = dp.GPIOA.split(&mut rcc.ahb2);
-    let scl = gpioa.pa9.into_alternate_open_drain(&mut gpioa.moder, &mut gpioa.otyper, &mut gpioa.afrh);
-    let sda = gpioa.pa10.into_alternate_open_drain(&mut gpioa.moder, &mut gpioa.otyper, &mut gpioa.afrh);
-
-    let i2c = i2c::I2c::i2c1(dp.I2C1, (scl, sda), hal::i2c::Config::new(Hertz::Hz(100_000), clocks), &mut rcc.apb1r1);
+fn main() -> Result<(), vl53l1x_uld::Error<LinuxI2CError>> {
+    let i2c = I2cdev::new("/dev/i2c")?;
 
     let vl = VL53L1X::new(i2c, vl53l1x_uld::DEFAULT_ADDRESS);
 
-    let res = measure_long_distance(vl);
+    measure_long_distance(vl)?;
 
-    defmt::println!("{}", defmt::Debug2Format(&res));
-
-    loop {}
+    Ok(())
 }

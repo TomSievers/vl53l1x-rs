@@ -389,7 +389,7 @@ where
         R: Into<[u8; 2]>,
     {
         self.i2c
-            .write_registers(self.address, address.into(), bytes.into())?;
+            .write_registers(self.address, address.into(), bytes)?;
 
         Ok(())
     }

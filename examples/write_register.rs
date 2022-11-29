@@ -6,7 +6,7 @@ use vl53l1x_uld::{
     IOVoltage, RangeStatus, VL53L1X,
 };
 
-fn measure_continuous<I2C, E>(mut vl: VL53L1X<I2C>) -> Result<(), vl53l1x_uld::Error<E>>
+fn measure_without_interrupt<I2C, E>(mut vl: VL53L1X<I2C>) -> Result<(), vl53l1x_uld::Error<E>>
 where
     E: Debug,
     I2C: Read<Error = E> + Write<Error = E>,
@@ -15,6 +15,9 @@ where
     if vl.get_sensor_id()? == 0xEACC {
         // Initialize the device.
         vl.init(IOVoltage::Volt2_8)?;
+
+        // Do a direct register write to the interrupt config register to disable data ready interrupts.
+        vl.write_bytes(vl53l1x_uld::Register::SYSTEM__INTERRUPT_CONFIG_GPIO, &[0])?;
 
         // Start the ranging operations.
         vl.start_ranging()?;
@@ -37,12 +40,13 @@ where
     }
     Ok(())
 }
+
 fn main() -> Result<(), vl53l1x_uld::Error<LinuxI2CError>> {
     let i2c = I2cdev::new("/dev/i2c")?;
 
     let vl = VL53L1X::new(i2c, vl53l1x_uld::DEFAULT_ADDRESS);
 
-    measure_continuous(vl)?;
+    measure_without_interrupt(vl)?;
 
     Ok(())
 }

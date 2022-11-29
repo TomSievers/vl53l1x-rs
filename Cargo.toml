@@ -15,16 +15,10 @@ embedded-hal="0.2.7"
 vl53l1-reg="0.1.0"
 cfg-if = "1.0.0"
 
-[target.'cfg(not(target_os = "none"))'.dev-dependencies]
-embedded-hal-mock = {version="*", git="https://github.com/dbrgn/embedded-hal-mock.git", rev="3f93a2a"}
-
-
 [dev-dependencies]
-defmt = "0.3"
-defmt-rtt = "0.4"
-panic-probe = { version = "0.3", features = ["print-defmt"] }
-cortex-m-rt = "0.7"
-stm32l4xx-hal = {version = "0.7.1", features = ["rt", "stm32l412"]}
+linux-embedded-hal = "0.3.2"
+shared-bus = {version = "0.2.5", features = [ "std" ]}
+embedded-hal-mock = {version="*", git="https://github.com/dbrgn/embedded-hal-mock.git", rev="3f93a2a"}
 
 [features]
 default = []

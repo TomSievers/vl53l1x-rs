@@ -37,12 +37,19 @@ where
     }
     Ok(())
 }
+
 fn main() -> Result<(), vl53l1x_uld::Error<LinuxI2CError>> {
     let i2c = I2cdev::new("/dev/i2c")?;
 
-    let vl = VL53L1X::new(i2c, vl53l1x_uld::DEFAULT_ADDRESS);
+    let bus = shared_bus::new_std!(I2cdev = i2c).expect("Failed to create bus manager");
 
-    measure_continuous(vl)?;
+    let vl1 = VL53L1X::new(bus.acquire_i2c(), vl53l1x_uld::DEFAULT_ADDRESS);
+
+    let vl2 = VL53L1X::new(bus.acquire_i2c(), 0x50);
+
+    std::thread::spawn(move || measure_continuous(vl1));
+
+    measure_continuous(vl2)?;
 
     Ok(())
 }
