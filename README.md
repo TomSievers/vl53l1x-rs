@@ -9,7 +9,7 @@ This crate is a port of the [STM VL53L1X IMG009][driver-page] driver to native r
 
 ## Minimal example
 
-Below is minimal example for using this driver.
+Below is minimal example for using this driver. Other more complex examples can be found in the examples folder.
 
 ```rust
 use vl53l1x_uld::{self, VL53L1X, IOVoltage, RangeStatus};
