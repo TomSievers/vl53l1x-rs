@@ -2,11 +2,11 @@
 
 /// Threshold window behavior.
 pub enum Window {
-    /// Trigger when measurement is below threshold.
+    /// Trigger when measurement is below threshold. The low threshold will be used as threshold.
     Below = 0,
-    /// Trigger when measurement is above threshold.
+    /// Trigger when measurement is above threshold. The high threshold will be used as threshold.
     Above = 1,
-    /// Trigger when measurement is in the window.
+    /// Trigger when measurement is inside the window.
     In = 2,
     /// Trigger when measurement is outside the window.
     Out = 3,
