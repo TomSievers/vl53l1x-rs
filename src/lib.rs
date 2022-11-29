@@ -110,14 +110,11 @@ pub struct SWVersion {
 
 /// Driver error.
 #[derive(Debug)]
-pub enum Error<T>
-where
-    T: Write + Read
+pub enum Error<E>
+where E : Debug
 {
-    /// Error occured during write operation with underlying fault from I2C implementation.
-    WriteError(<T as Write>::Error),
-    /// Error occured during write read operation with underlying fault from I2C implementation.
-    WriteReadError(<T as Read>::Error),
+    /// Error occured during communication holds the specific error from the communcation
+    CommunicationError(E),
     /// The timing budget is invalid.
     InvalidTimingBudget,
     /// The distance mode is invalid.
@@ -253,9 +250,10 @@ where
     address: u8,
 }
 
-impl<T> VL53L1X<T>
+impl<T, E> VL53L1X<T>
 where
-T: Write + Read,
+    E : Debug,
+    T: Write<Error = E> + Read<Error = E>,
 {
     /// Create a new instance of the VL53L1X driver with the given I2C address.
     ///
@@ -376,11 +374,11 @@ T: Write + Read,
     /// * `address` - Address of the register to write to.
     /// * `iter` - Iterator of bytes that will be written at the address.
     /// * `i2c` - I2C instance used for communication.
-    pub fn write_bytes<R>(&mut self, address: R, bytes: &[u8]) -> Result<(), Error<T>> 
+    pub fn write_bytes<R>(&mut self, address: R, bytes: &[u8]) -> Result<(), Error<E>> 
     where R : Into<[u8; 2]>
     {
         if let Err(e) = self.i2c.write_registers(self.address, address.into(), bytes.into()) {
-            return Err(Error::WriteError(e));
+            return Err(Error::CommunicationError(e));
         }
 
         Ok(())
@@ -393,11 +391,11 @@ T: Write + Read,
     /// * `address` - Address of the register to read from.
     /// * `bytes` - Mutable slice that read data will be written to.
     /// * `i2c` - I2C instance used for communication.
-    pub fn read_bytes<R>(&mut self, address: R, bytes: &mut [u8]) -> Result<(), Error<T>> 
+    pub fn read_bytes<R>(&mut self, address: R, bytes: &mut [u8]) -> Result<(), Error<E>> 
     where R: Into<[u8; 2]>
     {
         if let Err(e) = self.i2c.read_registers(self.address, address.into(), bytes) {
-            return Err(Error::WriteReadError(e));
+            return Err(Error::CommunicationError(e));
         }
         
         Ok(())
@@ -409,7 +407,7 @@ T: Write + Read,
     ///
     /// * `new_address` - The new address to set for the current device.
     /// * `i2c` - I2C instance used for communication.
-    pub fn set_address(&mut self, new_address: u8) -> Result<(), Error<T>> {
+    pub fn set_address(&mut self, new_address: u8) -> Result<(), Error<E>> {
         self.write_bytes(Register::I2C_SLAVE__DEVICE_ADDRESS, &[new_address])?;
 
         self.address = new_address;
@@ -423,7 +421,7 @@ T: Write + Read,
     ///
     /// * `io_config` - The io voltage that will be configured for the device.
     /// * `i2c` - I2C instance used for communication.
-    pub fn init(&mut self, io_config: IOVoltage) -> Result<(), Error<T>> {
+    pub fn init(&mut self, io_config: IOVoltage) -> Result<(), Error<E>> {
         self.write_bytes(Register::PAD_I2C_HV__CONFIG, &[0])?;
 
         let io = match io_config {
@@ -466,7 +464,7 @@ T: Write + Read,
     /// # Arguments
     ///
     /// * `i2c` - I2C instance used for communication.
-    pub fn clear_interrupt(&mut self) -> Result<(), Error<T>> {
+    pub fn clear_interrupt(&mut self) -> Result<(), Error<E>> {
         self.write_bytes(Register::SYSTEM__INTERRUPT_CLEAR, &[0x01])
     }
 
@@ -476,7 +474,7 @@ T: Write + Read,
     ///
     /// * `polarity` - The polarity to set.
     /// * `i2c` - I2C instance used for communication.
-    pub fn set_interrupt_polarity(&mut self, polarity: Polarity) -> Result<(), Error<T>> {
+    pub fn set_interrupt_polarity(&mut self, polarity: Polarity) -> Result<(), Error<E>> {
         let mut gpio_mux_hv = [0u8];
 
         self.read_bytes(Register::GPIO_HV_MUX__CTRL, &mut gpio_mux_hv)?;
@@ -493,7 +491,7 @@ T: Write + Read,
     /// # Arguments
     ///
     /// * `i2c` - I2C instance used for communication.
-    pub fn get_interrupt_polarity(&mut self) -> Result<Polarity, Error<T>> {
+    pub fn get_interrupt_polarity(&mut self) -> Result<Polarity, Error<E>> {
         let mut gpio_mux_hv = [0u8];
 
         self.read_bytes(Register::GPIO_HV_MUX__CTRL, &mut gpio_mux_hv)?;
@@ -507,7 +505,7 @@ T: Write + Read,
     /// # Arguments
     ///
     /// * `i2c` - I2C instance used for communication.
-    pub fn start_ranging(&mut self) -> Result<(), Error<T>> {
+    pub fn start_ranging(&mut self) -> Result<(), Error<E>> {
         self.write_bytes(Register::SYSTEM__MODE_START, &[0x40])
     }
 
@@ -516,7 +514,7 @@ T: Write + Read,
     /// # Arguments
     ///
     /// * `i2c` - I2C instance used for communication.
-    pub fn stop_ranging(&mut self) -> Result<(), Error<T>> {
+    pub fn stop_ranging(&mut self) -> Result<(), Error<E>> {
         self.write_bytes(Register::SYSTEM__MODE_START, &[0x00])
     }
 
@@ -525,7 +523,7 @@ T: Write + Read,
     /// # Arguments
     ///
     /// * `i2c` - I2C instance used for communication.
-    pub fn is_data_ready(&mut self) -> Result<bool, Error<T>> {
+    pub fn is_data_ready(&mut self) -> Result<bool, Error<E>> {
         let polarity = self.get_interrupt_polarity()? as u8;
 
         let mut state = [0u8];
@@ -545,7 +543,7 @@ T: Write + Read,
     ///
     /// * `milliseconds` - One of the following values = 15, 20, 33, 50, 100(default), 200, 500.
     /// * `i2c` - I2C instance used for communication.
-    pub fn set_timing_budget_ms(&mut self, milliseconds: u16) -> Result<(), Error<T>> {
+    pub fn set_timing_budget_ms(&mut self, milliseconds: u16) -> Result<(), Error<E>> {
         let mode = self.get_distance_mode()?;
 
         let (a, b) = match mode {
@@ -587,7 +585,7 @@ T: Write + Read,
     /// # Arguments
     ///
     /// * `i2c` - I2C instance used for communication.
-    pub fn get_timing_budget_ms(&mut self) -> Result<u16, Error<T>> {
+    pub fn get_timing_budget_ms(&mut self) -> Result<u16, Error<E>> {
         let mut a = [0u8, 0];
 
         self.read_bytes(Register::RANGE_CONFIG__TIMEOUT_MACROP_A_HI, &mut a)?;
@@ -610,7 +608,7 @@ T: Write + Read,
     ///
     /// * `mode` - The distance mode to use.
     /// * `i2c` - I2C instance used for communication.
-    pub fn set_distance_mode(&mut self, mode: DistanceMode) -> Result<(), Error<T>> {
+    pub fn set_distance_mode(&mut self, mode: DistanceMode) -> Result<(), Error<E>> {
         let tb = self.get_timing_budget_ms()?;
 
         let (timeout, vcsel_a, vcsel_b, phase, woi_sd0, phase_sd0) = match mode {
@@ -650,7 +648,7 @@ T: Write + Read,
     /// # Arguments
     ///
     /// * `i2c` - I2C instance used for communication.
-    pub fn get_distance_mode(&mut self) -> Result<DistanceMode, Error<T>> {
+    pub fn get_distance_mode(&mut self) -> Result<DistanceMode, Error<E>> {
         let mut out = [0u8];
         self.read_bytes(Register::PHASECAL_CONFIG__TIMEOUT_MACROP, &mut out)?;
 
@@ -670,7 +668,7 @@ T: Write + Read,
     ///
     /// * `i2c` - I2C instance used for communication.
     /// * `milliseconds` - The number of milliseconds used for the inter measurement period.
-    pub fn set_inter_measurement_period_ms(&mut self, milliseconds: u16) -> Result<(), Error<T>> {
+    pub fn set_inter_measurement_period_ms(&mut self, milliseconds: u16) -> Result<(), Error<E>> {
         let mut clock_pll = [0u8, 0];
 
         self.read_bytes(Register::RESULT__OSC_CALIBRATE_VAL, &mut clock_pll)?;
@@ -692,7 +690,7 @@ T: Write + Read,
     /// # Arguments
     ///
     /// * `i2c` - I2C instance used for communication.
-    pub fn get_inter_measurement_period_ms(&mut self) -> Result<u16, Error<T>> {
+    pub fn get_inter_measurement_period_ms(&mut self) -> Result<u16, Error<E>> {
         let mut clock_pll = [0u8, 0];
         let mut period = [0u8, 0, 0, 0];
 
@@ -712,7 +710,7 @@ T: Write + Read,
     /// # Arguments
     ///
     /// * `i2c` - I2C instance used for communication.
-    pub fn is_booted(&mut self) -> Result<bool, Error<T>> {
+    pub fn is_booted(&mut self) -> Result<bool, Error<E>> {
         let mut status = [0u8];
         self.read_bytes(Register::FIRMWARE__SYSTEM_STATUS, &mut status)?;
 
@@ -724,7 +722,7 @@ T: Write + Read,
     /// # Arguments
     ///
     /// * `i2c` - I2C instance used for communication.
-    pub fn get_sensor_id(&mut self) -> Result<u16, Error<T>> {
+    pub fn get_sensor_id(&mut self) -> Result<u16, Error<E>> {
         let mut id = [0u8, 0];
 
         self.read_bytes(Register::IDENTIFICATION__MODEL_ID, &mut id)?;
@@ -737,7 +735,7 @@ T: Write + Read,
     /// # Arguments
     ///
     /// * `i2c` - I2C instance used for communication.
-    pub fn get_distance(&mut self) -> Result<u16, Error<T>> {
+    pub fn get_distance(&mut self) -> Result<u16, Error<E>> {
         let mut distance = [0u8, 0];
 
         self.read_bytes(
@@ -753,7 +751,7 @@ T: Write + Read,
     /// # Arguments
     ///
     /// * `i2c` - I2C instance used for communication.
-    pub fn get_signal_per_spad(&mut self) -> Result<u16, Error<T>> {
+    pub fn get_signal_per_spad(&mut self) -> Result<u16, Error<E>> {
         let mut signal = [0, 0];
         let mut spad_count = [0, 0];
 
@@ -777,7 +775,7 @@ T: Write + Read,
     /// # Arguments
     ///
     /// * `i2c` - I2C instance used for communication.
-    pub fn get_ambient_per_spad(&mut self) -> Result<u16, Error<T>> {
+    pub fn get_ambient_per_spad(&mut self) -> Result<u16, Error<E>> {
         let mut spad_count = [0, 0];
         let mut ambient = [0, 0];
 
@@ -798,7 +796,7 @@ T: Write + Read,
     /// # Arguments
     ///
     /// * `i2c` - I2C instance used for communication.
-    pub fn get_signal_rate(&mut self) -> Result<u16, Error<T>> {
+    pub fn get_signal_rate(&mut self) -> Result<u16, Error<E>> {
         let mut signal = [0, 0];
 
         self.read_bytes(
@@ -814,7 +812,7 @@ T: Write + Read,
     /// # Arguments
     ///
     /// * `i2c` - I2C instance used for communication.
-    pub fn get_spad_count(&mut self) -> Result<u16, Error<T>> {
+    pub fn get_spad_count(&mut self) -> Result<u16, Error<E>> {
         let mut spad_count = [0, 0];
 
         self.read_bytes(
@@ -830,7 +828,7 @@ T: Write + Read,
     /// # Arguments
     ///
     /// * `i2c` - I2C instance used for communication.
-    pub fn get_ambient_rate(&mut self) -> Result<u16, Error<T>> {
+    pub fn get_ambient_rate(&mut self) -> Result<u16, Error<E>> {
         let mut ambient = [0, 0];
 
         self.read_bytes(Register::RESULT__AMBIENT_COUNT_RATE_MCPS_SD0, &mut ambient)?;
@@ -843,7 +841,7 @@ T: Write + Read,
     /// # Arguments
     ///
     /// * `i2c` - I2C instance used for communication.
-    pub fn get_range_status(&mut self) -> Result<RangeStatus, Error<T>> {
+    pub fn get_range_status(&mut self) -> Result<RangeStatus, Error<E>> {
         let mut status = [0];
 
         self.read_bytes(Register::RESULT__RANGE_STATUS, &mut status)?;
@@ -858,7 +856,7 @@ T: Write + Read,
     /// # Arguments
     ///
     /// * `i2c` - I2C instance used for communication.
-    pub fn get_result(&mut self) -> Result<MeasureResult, Error<T>> {
+    pub fn get_result(&mut self) -> Result<MeasureResult, Error<E>> {
         let mut result = [0; 17];
 
         self.read_bytes(Register::RESULT__RANGE_STATUS, &mut result)?;
@@ -878,7 +876,7 @@ T: Write + Read,
     ///
     /// * `i2c` - I2C instance used for communication.
     /// * `offset` - The offset in millimeters.
-    pub fn set_offset(&mut self, offset: i16) -> Result<(), Error<T>> {
+    pub fn set_offset(&mut self, offset: i16) -> Result<(), Error<E>> {
         self.write_bytes(
             Register::ALGO__PART_TO_PART_RANGE_OFFSET_MM,
             &(offset * 4).to_be_bytes(),
@@ -895,7 +893,7 @@ T: Write + Read,
     /// # Arguments
     ///
     /// * `i2c` - I2C instance used for communication.
-    pub fn get_offset(&mut self) -> Result<i16, Error<T>> {
+    pub fn get_offset(&mut self) -> Result<i16, Error<E>> {
         let mut offset = [0, 0];
 
         self.read_bytes(Register::ALGO__PART_TO_PART_RANGE_OFFSET_MM, &mut offset)?;
@@ -913,7 +911,7 @@ T: Write + Read,
     ///
     /// * `i2c` - I2C instance used for communication.
     /// * `correction` - The number of photons reflected back from the cover glass in cps.
-    pub fn set_cross_talk(&mut self, correction: u16) -> Result<(), Error<T>> {
+    pub fn set_cross_talk(&mut self, correction: u16) -> Result<(), Error<E>> {
         self.write_bytes(
             Register::ALGO__CROSSTALK_COMPENSATION_X_PLANE_GRADIENT_KCPS,
             &[0, 0],
@@ -938,7 +936,7 @@ T: Write + Read,
     /// # Arguments
     ///
     /// * `i2c` - I2C instance used for communication.
-    pub fn get_cross_talk(&mut self) -> Result<u16, Error<T>> {
+    pub fn get_cross_talk(&mut self) -> Result<u16, Error<E>> {
         let mut correction = [0, 0];
 
         self.read_bytes(
@@ -957,7 +955,7 @@ T: Write + Read,
     ///
     /// * `i2c` - I2C instance used for communication.
     /// * `threshold` - The threshold to apply.
-    pub fn set_distance_threshold(&mut self, threshold: Threshold) -> Result<(), Error<T>> {
+    pub fn set_distance_threshold(&mut self, threshold: Threshold) -> Result<(), Error<E>> {
         let mut config = [0];
 
         self.read_bytes(Register::SYSTEM__INTERRUPT_CONFIG_GPIO, &mut config)?;
@@ -976,7 +974,7 @@ T: Write + Read,
     /// # Arguments
     ///
     /// * `i2c` - I2C instance used for communication.
-    pub fn get_distance_threshold(&mut self) -> Result<Threshold, Error<T>> {
+    pub fn get_distance_threshold(&mut self) -> Result<Threshold, Error<E>> {
         let mut config = [0];
 
         self.read_bytes(Register::SYSTEM__INTERRUPT_CONFIG_GPIO, &mut config)?;
@@ -1003,7 +1001,7 @@ T: Write + Read,
     ///
     /// * `i2c` - I2C instance used for communication.
     /// * `roi` - The ROI to apply.
-    pub fn set_roi(&mut self, mut roi: ROI) -> Result<(), Error<T>> {
+    pub fn set_roi(&mut self, mut roi: ROI) -> Result<(), Error<E>> {
         debug_assert!(roi.width >= 4);
         debug_assert!(roi.height >= 4);
 
@@ -1039,7 +1037,7 @@ T: Write + Read,
     /// # Arguments
     ///
     /// * `i2c` - I2C instance used for communication.
-    pub fn get_roi(&mut self) -> Result<ROI, Error<T>> {
+    pub fn get_roi(&mut self) -> Result<ROI, Error<E>> {
         let mut config = [0];
 
         self.read_bytes(
@@ -1061,7 +1059,7 @@ T: Write + Read,
     ///
     /// * `i2c` - I2C instance used for communication.
     /// * `center` - Tne ROI center to apply.
-    pub fn set_roi_center(&mut self, center: ROICenter) -> Result<(), Error<T>> {
+    pub fn set_roi_center(&mut self, center: ROICenter) -> Result<(), Error<E>> {
         self.write_bytes(Register::ROI_CONFIG__USER_ROI_CENTRE_SPAD, &[center.spad])
     }
 
@@ -1070,7 +1068,7 @@ T: Write + Read,
     /// # Arguments
     ///
     /// * `i2c` - I2C instance used for communication.
-    pub fn get_roi_center(&mut self) -> Result<ROICenter, Error<T>> {
+    pub fn get_roi_center(&mut self) -> Result<ROICenter, Error<E>> {
         let mut center = [0];
 
         self.read_bytes(Register::ROI_CONFIG__MODE_ROI_CENTRE_SPAD, &mut center)?;
@@ -1084,7 +1082,7 @@ T: Write + Read,
     ///
     /// * `i2c` - I2C instance used for communication.
     /// * `threshold` - The signal threshold.
-    pub fn set_signal_threshold(&mut self, threshold: u16) -> Result<(), Error<T>> {
+    pub fn set_signal_threshold(&mut self, threshold: u16) -> Result<(), Error<E>> {
         self.write_bytes(
             Register::RANGE_CONFIG__MIN_COUNT_RATE_RTN_LIMIT_MCPS,
             &(threshold >> 3).to_be_bytes(),
@@ -1096,7 +1094,7 @@ T: Write + Read,
     /// # Arguments
     ///
     /// * `i2c` - I2C instance used for communication.
-    pub fn get_signal_threshold(&mut self) -> Result<u16, Error<T>> {
+    pub fn get_signal_threshold(&mut self) -> Result<u16, Error<E>> {
         let mut threshold = [0, 0];
 
         self.read_bytes(
@@ -1113,7 +1111,7 @@ T: Write + Read,
     ///
     /// * `i2c` - I2C instance used for communication.
     /// * `threshold` - The sigma threshold.
-    pub fn set_sigma_threshold(&mut self, threshold: u16) -> Result<(), Error<T>> {
+    pub fn set_sigma_threshold(&mut self, threshold: u16) -> Result<(), Error<E>> {
         if threshold > (0xFFFF >> 2) {
             return Err(Error::InvalidSigmaThreshold);
         }
@@ -1129,7 +1127,7 @@ T: Write + Read,
     /// # Arguments
     ///
     /// * `i2c` - I2C instance used for communication.
-    pub fn get_sigma_threshold(&mut self) -> Result<u16, Error<T>> {
+    pub fn get_sigma_threshold(&mut self) -> Result<u16, Error<E>> {
         let mut threshold = [0, 0];
 
         self.read_bytes(Register::RANGE_CONFIG__SIGMA_THRESH, &mut threshold)?;
@@ -1144,7 +1142,7 @@ T: Write + Read,
     /// # Arguments
     ///
     /// * `i2c` - I2C instance used for communication.
-    pub fn calibrate_temperature(&mut self) -> Result<(), Error<T>> {
+    pub fn calibrate_temperature(&mut self) -> Result<(), Error<E>> {
         self.write_bytes(
             Register::VHV_CONFIG__TIMEOUT_MACROP_LOOP_BOUND,
             &0x81u16.to_be_bytes(),
@@ -1175,7 +1173,7 @@ T: Write + Read,
     ///
     /// * `i2c` - I2C instance used for communication.
     /// * `target_distance_mm` - Distance to the target in millimeters, ST recommends 100 mm.
-    pub fn calibrate_offset(&mut self, target_distance_mm: u16) -> Result<i16, Error<T>> {
+    pub fn calibrate_offset(&mut self, target_distance_mm: u16) -> Result<i16, Error<E>> {
         self.write_bytes(
             Register::ALGO__PART_TO_PART_RANGE_OFFSET_MM,
             &0u16.to_be_bytes(),
@@ -1213,7 +1211,7 @@ T: Write + Read,
     ///
     /// * `i2c` - I2C instance used for communication.
     /// * `target_distance_mm` - Distance to the target in millimeters, ST recommends 100 mm.
-    pub fn calibrate_cross_talk(&mut self, target_distance_mm: u16) -> Result<u16, Error<T>> {
+    pub fn calibrate_cross_talk(&mut self, target_distance_mm: u16) -> Result<u16, Error<E>> {
         self.write_bytes(
             Register::ALGO__CROSSTALK_COMPENSATION_PLANE_OFFSET_KCPS,
             &0u16.to_be_bytes(),
@@ -1348,7 +1346,7 @@ mod tests {
         assert!(res.is_err());
 
         match res.unwrap_err() {
-            crate::Error::WriteError(e) => {
+            crate::Error::CommunicationError(e) => {
                 assert!(e == MockError::Io(ErrorKind::NotFound))
             }
             _ => panic!("Invalid error returned"),
@@ -1374,7 +1372,7 @@ mod tests {
         assert!(res.is_err());
 
         match res.unwrap_err() {
-            crate::Error::WriteReadError(e) => {
+            crate::Error::CommunicationError(e) => {
                 assert!(e == MockError::Io(ErrorKind::NotFound))
             }
             _ => panic!("Invalid error returned"),

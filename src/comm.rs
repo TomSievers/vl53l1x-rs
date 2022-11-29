@@ -37,7 +37,7 @@ cfg_if! {
         where I2C : WriteIter,
             <I2C as WriteIter>::Error : Debug
         {
-            type Error : = <I2C as WriteIter>::Error;
+            type Error = <I2C as WriteIter>::Error;
             fn write_registers(&mut self, address: u8, register: [u8; 2], bytes: &[u8]) -> Result<(), Self::Error> {
                 let iter = register.iter().chain(bytes.iter()).cloned();
                 self.write(address, iter)
