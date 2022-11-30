@@ -223,9 +223,9 @@ impl From<u8> for RangeStatus {
 /// Voltage of SDA, SCL and GPIO.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum IOVoltage {
-    /// Use an IO voltage ov 1.8v
+    /// Use an IO voltage of 1.8v
     Volt1_8,
-    /// Use an IO voltage ov 2.8v
+    /// Use an IO voltage of 2.8v
     Volt2_8,
 }
 
@@ -383,7 +383,7 @@ where
     /// # Arguments
     ///
     /// * `address` - Address of the register to write to.
-    /// * `iter` - Iterator of bytes that will be written at the address.
+    /// * `bytes` - Bytes to write to the given register.
     pub fn write_bytes<R>(&mut self, address: R, bytes: &[u8]) -> Result<(), Error<E>>
     where
         R: Into<[u8; 2]>,
