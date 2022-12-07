@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added
+* New constant `SENSOR_ID` which can be used when validating the sensor ID. This avoids having to copy & paste the ID (`0xEACC`).
 
 ## [2.0.0]
 ### Added

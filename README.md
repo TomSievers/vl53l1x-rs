@@ -11,7 +11,7 @@ This crate is a port of the [STM VL53L1X IMG009][driver-page] driver to native r
 Below is minimal example for using this driver. Other more complex examples can be found in the examples folder.
 
 ```rust
-use vl53l1x_uld::{self, VL53L1X, IOVoltage, RangeStatus};
+use vl53l1x_uld::{self, VL53L1X, IOVoltage, RangeStatus, SENSOR_ID};
 
 // Create hardware specific I2C instance.
 let i2c = ...;
@@ -21,7 +21,7 @@ let mut vl = VL53L1X::new(i2c, vl53l1x_uld::DEFAULT_ADDRESS);
 const ERR : &str = "Failed to communicate";
 
 // Check if the sensor id is correct.
-if (vl.get_sensor_id().expect(ERR) == 0xEACC)
+if (vl.get_sensor_id().expect(ERR) == SENSOR_ID)
 {
     // Initialize the sensor before any usage.
     // Set the voltage of the IO pins to be 2.8 volts

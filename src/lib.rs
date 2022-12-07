@@ -12,7 +12,7 @@
 //! # Example
 //!
 //! ```
-//! use vl53l1x_uld::{self, VL53L1X, IOVoltage, RangeStatus};
+//! use vl53l1x_uld::{self, VL53L1X, IOVoltage, RangeStatus, SENSOR_ID};
 //! # use embedded_hal_mock::i2c::{Mock, Transaction};
 //! # use cfg_if::cfg_if;
 //! #
@@ -61,7 +61,7 @@
 //! const ERR : &str = "Failed to communicate";
 //!
 //! // Check if the sensor id is correct.
-//! if (vl.get_sensor_id().expect(ERR) == 0xEACC)
+//! if (vl.get_sensor_id().expect(ERR) == SENSOR_ID)
 //! {
 //!     // Initialize the sensor before any usage.
 //!     // Set the voltage of the IO pins to be 2.8 volts
@@ -246,6 +246,9 @@ pub struct MeasureResult {
 
 /// Default I2C address for VL53L1X.
 pub const DEFAULT_ADDRESS: u8 = 0x29;
+
+/// The ID of the sensor as returned by the device when querying [`VL53L1X::get_sensor_id`].
+pub const SENSOR_ID: u16 = 0xEACC;
 
 pub use vl53l1_reg::Index as Register;
 
@@ -681,7 +684,7 @@ where
         Ok(status[0] == 1)
     }
 
-    /// Get the sensor id of the sensor. This id must be 0xEACC.
+    /// Get the sensor id of the sensor. This id must be equivalent to [`SENSOR_ID`].
     pub fn get_sensor_id(&mut self) -> Result<u16, Error<E>> {
         let mut id = [0u8, 0];
 

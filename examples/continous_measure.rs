@@ -3,7 +3,7 @@ use linux_embedded_hal::{i2cdev::linux::LinuxI2CError, I2cdev};
 use vl53l1x_uld::{
     self,
     comm::{Read, Write},
-    IOVoltage, RangeStatus, VL53L1X,
+    IOVoltage, RangeStatus, SENSOR_ID, VL53L1X,
 };
 
 fn measure_continuous<I2C, E>(mut vl: VL53L1X<I2C>) -> Result<(), vl53l1x_uld::Error<E>>
@@ -12,7 +12,7 @@ where
     I2C: Read<Error = E> + Write<Error = E>,
 {
     // Ensure the correct device is connected
-    if vl.get_sensor_id()? == 0xEACC {
+    if vl.get_sensor_id()? == SENSOR_ID {
         // Initialize the device.
         vl.init(IOVoltage::Volt2_8)?;
 
