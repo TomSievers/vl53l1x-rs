@@ -8,7 +8,6 @@ This crate is a port of the [STM VL53L1X IMG009][driver-page] driver to native r
 [driver-page]: https://www.st.com/content/st_com/en/products/embedded-software/imaging-software/stsw-img009.html#overview
 
 ## Minimal example
-
 Below is minimal example for using this driver. Other more complex examples can be found in the examples folder.
 
 ```rust
@@ -41,5 +40,7 @@ if (vl.get_sensor_id().expect(ERR) == 0xEACC)
         let distance = vl.get_distance().expect(ERR);
     }
 }
-
 ```
+
+## Changelog
+For the changelog please see the dedicated [CHANGELOG.md](CHANGELOG.md).
