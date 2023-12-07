@@ -719,7 +719,7 @@ where
         let signal = u16::from_be_bytes(signal);
         let spad_count = u16::from_be_bytes(spad_count);
 
-        Ok((200.0f32 * signal as f32 / spad_count as f32) as u16)
+        Ok((200.0f32 * signal as f32 / spad_count as f32).min(u16::MAX as f32) as u16)
     }
 
     /// Get the ambient signal per SPAD in kcps/SPAD where kcps stands for Kilo Count Per Second.
@@ -736,7 +736,7 @@ where
         let spad_count = u16::from_be_bytes(spad_count);
         let ambient = u16::from_be_bytes(ambient);
 
-        Ok((200.0f32 * ambient as f32 / spad_count as f32) as u16)
+        Ok((200.0f32 * ambient as f32 / spad_count as f32).min(u16::MAX as f32) as u16)
     }
 
     /// Get the returned signal in kcps (Kilo Count Per Second).
@@ -748,7 +748,7 @@ where
             &mut signal,
         )?;
 
-        Ok(u16::from_be_bytes(signal) * 8)
+        Ok(u16::from_be_bytes(signal).saturating_mul(8))
     }
 
     /// Get the count of currently enabled SPADs.
@@ -769,7 +769,7 @@ where
 
         self.read_bytes(Register::RESULT__AMBIENT_COUNT_RATE_MCPS_SD0, &mut ambient)?;
 
-        Ok(u16::from_be_bytes(ambient) * 8)
+        Ok(u16::from_be_bytes(ambient).saturating_mul(8))
     }
 
     /// Get the ranging status.
@@ -791,9 +791,9 @@ where
 
         Ok(MeasureResult {
             status: (result[0] & 0x1F).into(),
-            ambient: u16::from_be_bytes([result[7], result[8]]) * 8,
+            ambient: u16::from_be_bytes([result[7], result[8]]).saturating_mul(8),
             spad_count: result[3] as u16,
-            sig_per_spad: u16::from_be_bytes([result[15], result[16]]) * 8,
+            sig_per_spad: u16::from_be_bytes([result[15], result[16]]).saturating_mul(8),
             distance_mm: u16::from_be_bytes([result[13], result[14]]),
         })
     }
@@ -806,7 +806,7 @@ where
     pub fn set_offset(&mut self, offset: i16) -> Result<(), Error<E>> {
         self.write_bytes(
             Register::ALGO__PART_TO_PART_RANGE_OFFSET_MM,
-            &(offset * 4).to_be_bytes(),
+            &(offset.saturating_mul(4)).to_be_bytes(),
         )?;
 
         self.write_bytes(Register::MM_CONFIG__INNER_OFFSET_MM, &[0, 0])?;
@@ -862,7 +862,8 @@ where
             &mut correction,
         )?;
 
-        let correction = (u16::from_be_bytes(correction) * 1000) >> 9;
+        let correction =
+            ((u16::from_be_bytes(correction) as u32 * 1000) >> 9).min(u16::MAX as u32) as u16;
 
         Ok(correction)
     }
@@ -1076,7 +1077,9 @@ where
 
         let mut average_distance = 0;
 
-        for _ in 0..50 {
+        let measurement_count = 50;
+
+        for _ in 0..measurement_count {
             while self.is_data_ready()? {}
 
             average_distance += self.get_distance()?;
@@ -1085,7 +1088,7 @@ where
 
         self.stop_ranging()?;
 
-        average_distance /= 50;
+        average_distance /= measurement_count;
 
         let offset = target_distance_mm as i16 - average_distance as i16;
 
@@ -1113,7 +1116,9 @@ where
         let mut average_spad_cnt = 0;
         let mut average_signal_rate = 0;
 
-        for _ in 0..50 {
+        let measurement_count = 50;
+
+        for _ in 0..measurement_count {
             while self.is_data_ready()? {}
 
             average_distance += self.get_distance()?;
@@ -1124,9 +1129,9 @@ where
 
         self.stop_ranging()?;
 
-        average_distance /= 50;
-        average_spad_cnt /= 50;
-        average_signal_rate /= 50;
+        average_distance /= measurement_count;
+        average_spad_cnt /= measurement_count;
+        average_signal_rate /= measurement_count;
 
         let mut calibrate_val = 512
             * (average_signal_rate as u32
@@ -1137,7 +1142,7 @@ where
             calibrate_val = 0xFFFF;
         }
 
-        let config = ((calibrate_val as u16 * 1000) >> 9).to_be_bytes();
+        let config = ((calibrate_val as u16).saturating_mul(1000) >> 9).to_be_bytes();
 
         self.write_bytes(
             Register::ALGO__CROSSTALK_COMPENSATION_PLANE_OFFSET_KCPS,
@@ -1153,7 +1158,7 @@ mod tests {
 
     extern crate std;
 
-    use crate::{Register, SWVersion, DEFAULT_ADDRESS, VL53L1X};
+    use crate::{RangeStatus, Register, SWVersion, DEFAULT_ADDRESS, VL53L1X};
 
     use embedded_hal_mock::{
         i2c::{Mock as I2cMock, Transaction as I2cTransaction},
@@ -1267,5 +1272,66 @@ mod tests {
             }
             _ => panic!("Invalid error returned"),
         }
+    }
+
+    #[test]
+    fn ambient_saturation() {
+        let ambient_reg = (Register::RESULT__AMBIENT_COUNT_RATE_MCPS_SD0 as u16).to_be_bytes();
+
+        let expectations = [I2cTransaction::write_read(
+            0x29,
+            vec![ambient_reg[0], ambient_reg[1]],
+            vec![0xFF, 0xFF],
+        )];
+
+        let i2c = I2cMock::new(&expectations);
+
+        let mut sensor = VL53L1XMock::new(i2c, DEFAULT_ADDRESS);
+
+        assert!(sensor.get_ambient_rate().unwrap() == 0xFFFF);
+    }
+
+    #[test]
+    fn signal_saturation() {
+        let signal_reg = (Register::RESULT__PEAK_SIGNAL_COUNT_RATE_CROSSTALK_CORRECTED_MCPS_SD0
+            as u16)
+            .to_be_bytes();
+
+        let expectations = [I2cTransaction::write_read(
+            0x29,
+            vec![signal_reg[0], signal_reg[1]],
+            vec![0xFF, 0xFF],
+        )];
+
+        let i2c = I2cMock::new(&expectations);
+
+        let mut sensor = VL53L1XMock::new(i2c, DEFAULT_ADDRESS);
+
+        assert!(sensor.get_signal_rate().unwrap() == 0xFFFF);
+    }
+
+    #[test]
+    fn result_saturation() {
+        let status_reg = (Register::RESULT__RANGE_STATUS as u16).to_be_bytes();
+
+        let expectations = [I2cTransaction::write_read(
+            0x29,
+            vec![status_reg[0], status_reg[1]],
+            vec![
+                0, 0, 0, 0, 0, 0, 0, 0xFF, 0xFF, 0, 0, 0, 0, 0, 0, 0xFF, 0xFF,
+            ],
+        )];
+
+        let i2c = I2cMock::new(&expectations);
+
+        let mut sensor = VL53L1XMock::new(i2c, DEFAULT_ADDRESS);
+
+        let measurement = sensor.get_result().unwrap();
+
+        assert!(measurement.sig_per_spad == 0xFFFF);
+        assert!(measurement.ambient == 0xFFFF);
+        assert!(measurement.status == RangeStatus::None);
+        assert!(measurement.spad_count == 0);
+        assert!(measurement.distance_mm == 0);
     }
 }
