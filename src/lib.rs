@@ -12,7 +12,7 @@
 //! # Example
 //!
 //! ```
-//! use vl53l1x_uld::{self, VL53L1X, IOVoltage, RangeStatus};
+//! use vl53l1x_uld::{self, VL53L1X, VL53L1XRef, IOVoltage, RangeStatus};
 //! # use embedded_hal_mock::i2c::{Mock, Transaction};
 //! # use cfg_if::cfg_if;
 //! #
@@ -26,9 +26,9 @@
 //! #
 //! #    cfg_if! {
 //! #        if #[cfg(feature = "i2c-iter")] {
-//! #            expectations.push(Transaction::write(0x29, vec![0x00, 0x30].iter().chain(VL53L1X::<Mock>::DEFAULT_CONFIG.iter()).cloned().collect()));
+//! #            expectations.push(Transaction::write(0x29, vec![0x00, 0x30].iter().chain(VL53L1XRef::<Mock>::DEFAULT_CONFIG.iter()).cloned().collect()));
 //! #        } else {
-//! #            for (byte, address) in VL53L1X::<Mock>::DEFAULT_CONFIG.iter().zip(0x30u16..0x88) {
+//! #            for (byte, address) in VL53L1XRef::<Mock>::DEFAULT_CONFIG.iter().zip(0x30u16..0x88) {
 //! #                let adrs = address.to_be_bytes();
 //! #                expectations.push(Transaction::write(0x29, vec![adrs[0], adrs[1], *byte]));
 //! #            }
@@ -88,7 +88,7 @@
 
 use cfg_if::cfg_if;
 use comm::{Read, Write};
-use core::fmt::Debug;
+use core::{fmt::Debug, marker::PhantomData};
 use roi::{ROICenter, ROI};
 use threshold::{Threshold, Window};
 pub mod comm;
@@ -253,14 +253,21 @@ pub use vl53l1_reg::Index as Register;
 pub struct VL53L1X<T>
 where
     T: Write + Read,
-    // <T as Write>::Error: Debug + PartialEq,
-    // <T as WriteRead>::Error: Debug + PartialEq,
 {
     i2c: T,
-    address: u8,
+    inner: VL53L1XRef<T>,
 }
 
-impl<T, E> VL53L1X<T>
+/// Instance of a single VL53L1X driver, which uses a reference to a I2C instance.
+pub struct VL53L1XRef<T>
+where
+    T: Write + Read,
+{
+    _i2c: PhantomData<T>,
+    pub(crate) address: u8,
+}
+
+impl<T, E> VL53L1XRef<T>
 where
     E: Debug,
     T: Write<Error = E> + Read<Error = E>,
@@ -271,17 +278,10 @@ where
     ///
     /// * `i2c` - Instance of object that implements I2C communication. Is used for further communication with the sensor
     /// * `address` - The address to use for communication with the VL53L1X.
-    pub fn new(i2c: T, address: u8) -> VL53L1X<T> {
-        VL53L1X { i2c, address }
-    }
-
-    /// Get the driver version.
-    pub fn sw_version() -> SWVersion {
-        SWVersion {
-            major: 3,
-            minor: 5,
-            build: 1,
-            revision: 0,
+    pub fn new(address: u8) -> Self {
+        Self {
+            _i2c: PhantomData {},
+            address,
         }
     }
 
@@ -384,12 +384,11 @@ where
     ///
     /// * `address` - Address of the register to write to.
     /// * `bytes` - Bytes to write to the given register.
-    pub fn write_bytes<R>(&mut self, address: R, bytes: &[u8]) -> Result<(), Error<E>>
+    pub fn write_bytes<R>(&mut self, i2c: &mut T, address: R, bytes: &[u8]) -> Result<(), Error<E>>
     where
         R: Into<[u8; 2]>,
     {
-        self.i2c
-            .write_registers(self.address, address.into(), bytes)?;
+        i2c.write_registers(self.address, address.into(), bytes)?;
 
         Ok(())
     }
@@ -400,12 +399,16 @@ where
     ///
     /// * `address` - Address of the register to read from.
     /// * `bytes` - Mutable slice that read data will be written to.
-    pub fn read_bytes<R>(&mut self, address: R, bytes: &mut [u8]) -> Result<(), Error<E>>
+    pub fn read_bytes<R>(
+        &mut self,
+        i2c: &mut T,
+        address: R,
+        bytes: &mut [u8],
+    ) -> Result<(), Error<E>>
     where
         R: Into<[u8; 2]>,
     {
-        self.i2c
-            .read_registers(self.address, address.into(), bytes)?;
+        i2c.read_registers(self.address, address.into(), bytes)?;
 
         Ok(())
     }
@@ -415,8 +418,8 @@ where
     /// # Arguments
     ///
     /// * `new_address` - The new address to set for the current device.
-    pub fn set_address(&mut self, new_address: u8) -> Result<(), Error<E>> {
-        self.write_bytes(Register::I2C_SLAVE__DEVICE_ADDRESS, &[new_address])?;
+    pub fn set_address(&mut self, i2c: &mut T, new_address: u8) -> Result<(), Error<E>> {
+        self.write_bytes(i2c, Register::I2C_SLAVE__DEVICE_ADDRESS, &[new_address])?;
 
         self.address = new_address;
 
@@ -428,44 +431,48 @@ where
     /// # Arguments
     ///
     /// * `io_config` - The io voltage that will be configured for the device.
-    pub fn init(&mut self, io_config: IOVoltage) -> Result<(), Error<E>> {
-        self.write_bytes(Register::PAD_I2C_HV__CONFIG, &[0])?;
+    pub fn init(&mut self, i2c: &mut T, io_config: IOVoltage) -> Result<(), Error<E>> {
+        self.write_bytes(i2c, Register::PAD_I2C_HV__CONFIG, &[0])?;
 
         let io = match io_config {
             IOVoltage::Volt1_8 => 0,
             IOVoltage::Volt2_8 => 1,
         };
 
-        self.write_bytes(Register::GPIO_HV_PAD__CTRL, &[io])?;
-        self.write_bytes(Register::PAD_I2C_HV__EXTSUP_CONFIG, &[io])?;
+        self.write_bytes(i2c, Register::GPIO_HV_PAD__CTRL, &[io])?;
+        self.write_bytes(i2c, Register::PAD_I2C_HV__EXTSUP_CONFIG, &[io])?;
 
         cfg_if! {
             if #[cfg(feature = "i2c-iter")] {
-                self.write_bytes(Register::GPIO_HV_MUX__CTRL, &Self::DEFAULT_CONFIG)?;
+                self.write_bytes(i2c, Register::GPIO_HV_MUX__CTRL, &Self::DEFAULT_CONFIG)?;
             } else {
                 for (byte, address) in Self::DEFAULT_CONFIG.iter().zip(0x30u16..0x88) {
-                    self.write_bytes(address.to_be_bytes(), &[*byte])?;
+                    self.write_bytes(i2c, address.to_be_bytes(), &[*byte])?;
                 }
             }
         }
 
-        self.start_ranging()?;
+        self.start_ranging(i2c)?;
 
-        while !self.is_data_ready()? {}
+        while !self.is_data_ready(i2c)? {}
 
-        self.clear_interrupt()?;
-        self.stop_ranging()?;
+        self.clear_interrupt(i2c)?;
+        self.stop_ranging(i2c)?;
 
-        self.write_bytes(Register::VHV_CONFIG__TIMEOUT_MACROP_LOOP_BOUND, &[0x09])?;
-        self.write_bytes(Register::VHV_CONFIG__INIT, &[0])?;
+        self.write_bytes(
+            i2c,
+            Register::VHV_CONFIG__TIMEOUT_MACROP_LOOP_BOUND,
+            &[0x09],
+        )?;
+        self.write_bytes(i2c, Register::VHV_CONFIG__INIT, &[0])?;
 
         Ok(())
     }
 
     /// Clear the interrupt flag on the device.
     /// Should be called after reading ranging data from the device to start the next measurement.
-    pub fn clear_interrupt(&mut self) -> Result<(), Error<E>> {
-        self.write_bytes(Register::SYSTEM__INTERRUPT_CLEAR, &[0x01])
+    pub fn clear_interrupt(&mut self, i2c: &mut T) -> Result<(), Error<E>> {
+        self.write_bytes(i2c, Register::SYSTEM__INTERRUPT_CLEAR, &[0x01])
     }
 
     /// Set polarity of the interrupt.
@@ -473,45 +480,49 @@ where
     /// # Arguments
     ///
     /// * `polarity` - The polarity to set.
-    pub fn set_interrupt_polarity(&mut self, polarity: Polarity) -> Result<(), Error<E>> {
+    pub fn set_interrupt_polarity(
+        &mut self,
+        i2c: &mut T,
+        polarity: Polarity,
+    ) -> Result<(), Error<E>> {
         let mut gpio_mux_hv = [0u8];
 
-        self.read_bytes(Register::GPIO_HV_MUX__CTRL, &mut gpio_mux_hv)?;
+        self.read_bytes(i2c, Register::GPIO_HV_MUX__CTRL, &mut gpio_mux_hv)?;
 
         gpio_mux_hv[0] &= 0xEF;
 
         gpio_mux_hv[0] |= (polarity as u8) << 4;
 
-        self.write_bytes(Register::GPIO_HV_MUX__CTRL, &gpio_mux_hv)
+        self.write_bytes(i2c, Register::GPIO_HV_MUX__CTRL, &gpio_mux_hv)
     }
 
     /// Get the currently set interrupt polarity.
-    pub fn get_interrupt_polarity(&mut self) -> Result<Polarity, Error<E>> {
+    pub fn get_interrupt_polarity(&mut self, i2c: &mut T) -> Result<Polarity, Error<E>> {
         let mut gpio_mux_hv = [0u8];
 
-        self.read_bytes(Register::GPIO_HV_MUX__CTRL, &mut gpio_mux_hv)?;
+        self.read_bytes(i2c, Register::GPIO_HV_MUX__CTRL, &mut gpio_mux_hv)?;
 
         Ok((gpio_mux_hv[0] & 0x10).into())
     }
 
     /// Start a distance ranging operation.
     /// This operation is continuous, the interrupt flag should be cleared between each interrupt to start a new distance measurement.
-    pub fn start_ranging(&mut self) -> Result<(), Error<E>> {
-        self.write_bytes(Register::SYSTEM__MODE_START, &[0x40])
+    pub fn start_ranging(&mut self, i2c: &mut T) -> Result<(), Error<E>> {
+        self.write_bytes(i2c, Register::SYSTEM__MODE_START, &[0x40])
     }
 
     /// Stop an ongoing ranging operation.
-    pub fn stop_ranging(&mut self) -> Result<(), Error<E>> {
-        self.write_bytes(Register::SYSTEM__MODE_START, &[0x00])
+    pub fn stop_ranging(&mut self, i2c: &mut T) -> Result<(), Error<E>> {
+        self.write_bytes(i2c, Register::SYSTEM__MODE_START, &[0x00])
     }
 
     /// Check if new ranging data is available by polling the device.
-    pub fn is_data_ready(&mut self) -> Result<bool, Error<E>> {
-        let polarity = self.get_interrupt_polarity()? as u8;
+    pub fn is_data_ready(&mut self, i2c: &mut T) -> Result<bool, Error<E>> {
+        let polarity = self.get_interrupt_polarity(i2c)? as u8;
 
         let mut state = [0u8];
 
-        self.read_bytes(Register::GPIO__TIO_HV_STATUS, &mut state)?;
+        self.read_bytes(i2c, Register::GPIO__TIO_HV_STATUS, &mut state)?;
 
         if (state[0] & 0x01) == polarity {
             return Ok(true);
@@ -525,8 +536,8 @@ where
     /// # Arguments
     ///
     /// * `milliseconds` - One of the following values = 15, 20, 33, 50, 100(default), 200, 500.
-    pub fn set_timing_budget_ms(&mut self, milliseconds: u16) -> Result<(), Error<E>> {
-        let mode = self.get_distance_mode()?;
+    pub fn set_timing_budget_ms(&mut self, i2c: &mut T, milliseconds: u16) -> Result<(), Error<E>> {
+        let mode = self.get_distance_mode(i2c)?;
 
         let (a, b) = match mode {
             DistanceMode::Short => match milliseconds {
@@ -551,10 +562,12 @@ where
         };
 
         self.write_bytes(
+            i2c,
             Register::RANGE_CONFIG__TIMEOUT_MACROP_A_HI,
             &a.to_be_bytes(),
         )?;
         self.write_bytes(
+            i2c,
             Register::RANGE_CONFIG__TIMEOUT_MACROP_B_HI,
             &b.to_be_bytes(),
         )?;
@@ -563,10 +576,10 @@ where
     }
 
     /// Get the currently set timing budget of the device.
-    pub fn get_timing_budget_ms(&mut self) -> Result<u16, Error<E>> {
+    pub fn get_timing_budget_ms(&mut self, i2c: &mut T) -> Result<u16, Error<E>> {
         let mut a = [0u8, 0];
 
-        self.read_bytes(Register::RANGE_CONFIG__TIMEOUT_MACROP_A_HI, &mut a)?;
+        self.read_bytes(i2c, Register::RANGE_CONFIG__TIMEOUT_MACROP_A_HI, &mut a)?;
 
         Ok(match u16::from_be_bytes(a) {
             0x001D => 15,
@@ -585,8 +598,8 @@ where
     /// # Arguments
     ///
     /// * `mode` - The distance mode to use.
-    pub fn set_distance_mode(&mut self, mode: DistanceMode) -> Result<(), Error<E>> {
-        let tb = self.get_timing_budget_ms()?;
+    pub fn set_distance_mode(&mut self, i2c: &mut T, mode: DistanceMode) -> Result<(), Error<E>> {
+        let tb = self.get_timing_budget_ms(i2c)?;
 
         let (timeout, vcsel_a, vcsel_b, phase, woi_sd0, phase_sd0) = match mode {
             DistanceMode::Short => (0x14u8, 0x07u8, 0x05u8, 0x38u8, 0x0705u16, 0x0606u16),
@@ -594,36 +607,41 @@ where
         };
 
         self.write_bytes(
+            i2c,
             Register::PHASECAL_CONFIG__TIMEOUT_MACROP,
             &timeout.to_be_bytes(),
         )?;
         self.write_bytes(
+            i2c,
             Register::RANGE_CONFIG__VCSEL_PERIOD_A,
             &vcsel_a.to_be_bytes(),
         )?;
         self.write_bytes(
+            i2c,
             Register::RANGE_CONFIG__VCSEL_PERIOD_B,
             &vcsel_b.to_be_bytes(),
         )?;
         self.write_bytes(
+            i2c,
             Register::RANGE_CONFIG__VALID_PHASE_HIGH,
             &phase.to_be_bytes(),
         )?;
-        self.write_bytes(Register::SD_CONFIG__WOI_SD0, &woi_sd0.to_be_bytes())?;
+        self.write_bytes(i2c, Register::SD_CONFIG__WOI_SD0, &woi_sd0.to_be_bytes())?;
         self.write_bytes(
+            i2c,
             Register::SD_CONFIG__INITIAL_PHASE_SD0,
             &phase_sd0.to_be_bytes(),
         )?;
 
-        self.set_timing_budget_ms(tb)?;
+        self.set_timing_budget_ms(i2c, tb)?;
 
         Ok(())
     }
 
     /// Get the currently set distance mode of the device.
-    pub fn get_distance_mode(&mut self) -> Result<DistanceMode, Error<E>> {
+    pub fn get_distance_mode(&mut self, i2c: &mut T) -> Result<DistanceMode, Error<E>> {
         let mut out = [0u8];
-        self.read_bytes(Register::PHASECAL_CONFIG__TIMEOUT_MACROP, &mut out)?;
+        self.read_bytes(i2c, Register::PHASECAL_CONFIG__TIMEOUT_MACROP, &mut out)?;
 
         if out[0] == 0x14 {
             Ok(DistanceMode::Short)
@@ -640,16 +658,21 @@ where
     /// # Arguments
     ///
     /// * `milliseconds` - The number of milliseconds used for the inter measurement period.
-    pub fn set_inter_measurement_period_ms(&mut self, milliseconds: u16) -> Result<(), Error<E>> {
+    pub fn set_inter_measurement_period_ms(
+        &mut self,
+        i2c: &mut T,
+        milliseconds: u16,
+    ) -> Result<(), Error<E>> {
         let mut clock_pll = [0u8, 0];
 
-        self.read_bytes(Register::RESULT__OSC_CALIBRATE_VAL, &mut clock_pll)?;
+        self.read_bytes(i2c, Register::RESULT__OSC_CALIBRATE_VAL, &mut clock_pll)?;
 
         let clock_pll = u16::from_be_bytes(clock_pll) & 0x3FF;
 
         let val = ((clock_pll * milliseconds) as f32 * 1.075f32) as u32;
 
         self.write_bytes(
+            i2c,
             Register::SYSTEM__INTERMEASUREMENT_PERIOD,
             &val.to_be_bytes(),
         )?;
@@ -658,15 +681,15 @@ where
     }
 
     /// Get the currently set inter measurement period in milliseconds.
-    pub fn get_inter_measurement_period_ms(&mut self) -> Result<u16, Error<E>> {
+    pub fn get_inter_measurement_period_ms(&mut self, i2c: &mut T) -> Result<u16, Error<E>> {
         let mut clock_pll = [0u8, 0];
         let mut period = [0u8, 0, 0, 0];
 
-        self.read_bytes(Register::RESULT__OSC_CALIBRATE_VAL, &mut clock_pll)?;
+        self.read_bytes(i2c, Register::RESULT__OSC_CALIBRATE_VAL, &mut clock_pll)?;
 
         let clock_pll = u16::from_be_bytes(clock_pll) & 0x3FF;
 
-        self.read_bytes(Register::SYSTEM__INTERMEASUREMENT_PERIOD, &mut period)?;
+        self.read_bytes(i2c, Register::SYSTEM__INTERMEASUREMENT_PERIOD, &mut period)?;
 
         let period = u32::from_be_bytes(period);
 
@@ -674,27 +697,28 @@ where
     }
 
     /// Check if the device is booted.
-    pub fn is_booted(&mut self) -> Result<bool, Error<E>> {
+    pub fn is_booted(&mut self, i2c: &mut T) -> Result<bool, Error<E>> {
         let mut status = [0u8];
-        self.read_bytes(Register::FIRMWARE__SYSTEM_STATUS, &mut status)?;
+        self.read_bytes(i2c, Register::FIRMWARE__SYSTEM_STATUS, &mut status)?;
 
         Ok(status[0] == 1)
     }
 
     /// Get the sensor id of the sensor. This id must be 0xEACC.
-    pub fn get_sensor_id(&mut self) -> Result<u16, Error<E>> {
+    pub fn get_sensor_id(&mut self, i2c: &mut T) -> Result<u16, Error<E>> {
         let mut id = [0u8, 0];
 
-        self.read_bytes(Register::IDENTIFICATION__MODEL_ID, &mut id)?;
+        self.read_bytes(i2c, Register::IDENTIFICATION__MODEL_ID, &mut id)?;
 
         Ok(u16::from_be_bytes(id))
     }
 
     /// Get the distance measured in millimeters.
-    pub fn get_distance(&mut self) -> Result<u16, Error<E>> {
+    pub fn get_distance(&mut self, i2c: &mut T) -> Result<u16, Error<E>> {
         let mut distance = [0u8, 0];
 
         self.read_bytes(
+            i2c,
             Register::RESULT__FINAL_CROSSTALK_CORRECTED_RANGE_MM_SD0,
             &mut distance,
         )?;
@@ -703,15 +727,17 @@ where
     }
 
     /// Get the returned signal per SPAD in kcps/SPAD where kcps stands for Kilo Count Per Second.
-    pub fn get_signal_per_spad(&mut self) -> Result<u16, Error<E>> {
+    pub fn get_signal_per_spad(&mut self, i2c: &mut T) -> Result<u16, Error<E>> {
         let mut signal = [0, 0];
         let mut spad_count = [0, 0];
 
         self.read_bytes(
+            i2c,
             Register::RESULT__PEAK_SIGNAL_COUNT_RATE_CROSSTALK_CORRECTED_MCPS_SD0,
             &mut signal,
         )?;
         self.read_bytes(
+            i2c,
             Register::RESULT__DSS_ACTUAL_EFFECTIVE_SPADS_SD0,
             &mut spad_count,
         )?;
@@ -723,15 +749,20 @@ where
     }
 
     /// Get the ambient signal per SPAD in kcps/SPAD where kcps stands for Kilo Count Per Second.
-    pub fn get_ambient_per_spad(&mut self) -> Result<u16, Error<E>> {
+    pub fn get_ambient_per_spad(&mut self, i2c: &mut T) -> Result<u16, Error<E>> {
         let mut spad_count = [0, 0];
         let mut ambient = [0, 0];
 
         self.read_bytes(
+            i2c,
             Register::RESULT__DSS_ACTUAL_EFFECTIVE_SPADS_SD0,
             &mut spad_count,
         )?;
-        self.read_bytes(Register::RESULT__AMBIENT_COUNT_RATE_MCPS_SD0, &mut ambient)?;
+        self.read_bytes(
+            i2c,
+            Register::RESULT__AMBIENT_COUNT_RATE_MCPS_SD0,
+            &mut ambient,
+        )?;
 
         let spad_count = u16::from_be_bytes(spad_count);
         let ambient = u16::from_be_bytes(ambient);
@@ -740,10 +771,11 @@ where
     }
 
     /// Get the returned signal in kcps (Kilo Count Per Second).
-    pub fn get_signal_rate(&mut self) -> Result<u16, Error<E>> {
+    pub fn get_signal_rate(&mut self, i2c: &mut T) -> Result<u16, Error<E>> {
         let mut signal = [0, 0];
 
         self.read_bytes(
+            i2c,
             Register::RESULT__PEAK_SIGNAL_COUNT_RATE_CROSSTALK_CORRECTED_MCPS_SD0,
             &mut signal,
         )?;
@@ -752,10 +784,11 @@ where
     }
 
     /// Get the count of currently enabled SPADs.
-    pub fn get_spad_count(&mut self) -> Result<u16, Error<E>> {
+    pub fn get_spad_count(&mut self, i2c: &mut T) -> Result<u16, Error<E>> {
         let mut spad_count = [0, 0];
 
         self.read_bytes(
+            i2c,
             Register::RESULT__DSS_ACTUAL_EFFECTIVE_SPADS_SD0,
             &mut spad_count,
         )?;
@@ -764,19 +797,23 @@ where
     }
 
     /// Get the ambient signal in kcps (Kilo Count Per Second).
-    pub fn get_ambient_rate(&mut self) -> Result<u16, Error<E>> {
+    pub fn get_ambient_rate(&mut self, i2c: &mut T) -> Result<u16, Error<E>> {
         let mut ambient = [0, 0];
 
-        self.read_bytes(Register::RESULT__AMBIENT_COUNT_RATE_MCPS_SD0, &mut ambient)?;
+        self.read_bytes(
+            i2c,
+            Register::RESULT__AMBIENT_COUNT_RATE_MCPS_SD0,
+            &mut ambient,
+        )?;
 
         Ok(u16::from_be_bytes(ambient).saturating_mul(8))
     }
 
     /// Get the ranging status.
-    pub fn get_range_status(&mut self) -> Result<RangeStatus, Error<E>> {
+    pub fn get_range_status(&mut self, i2c: &mut T) -> Result<RangeStatus, Error<E>> {
         let mut status = [0];
 
-        self.read_bytes(Register::RESULT__RANGE_STATUS, &mut status)?;
+        self.read_bytes(i2c, Register::RESULT__RANGE_STATUS, &mut status)?;
 
         let status = u8::from_be_bytes(status) & 0x1F;
 
@@ -784,10 +821,10 @@ where
     }
 
     /// Get a measurement result object which is read in a single access.
-    pub fn get_result(&mut self) -> Result<MeasureResult, Error<E>> {
+    pub fn get_result(&mut self, i2c: &mut T) -> Result<MeasureResult, Error<E>> {
         let mut result = [0; 17];
 
-        self.read_bytes(Register::RESULT__RANGE_STATUS, &mut result)?;
+        self.read_bytes(i2c, Register::RESULT__RANGE_STATUS, &mut result)?;
 
         Ok(MeasureResult {
             status: (result[0] & 0x1F).into(),
@@ -803,23 +840,28 @@ where
     /// # Arguments
     ///
     /// * `offset` - The offset in millimeters.
-    pub fn set_offset(&mut self, offset: i16) -> Result<(), Error<E>> {
+    pub fn set_offset(&mut self, i2c: &mut T, offset: i16) -> Result<(), Error<E>> {
         self.write_bytes(
+            i2c,
             Register::ALGO__PART_TO_PART_RANGE_OFFSET_MM,
             &(offset.saturating_mul(4)).to_be_bytes(),
         )?;
 
-        self.write_bytes(Register::MM_CONFIG__INNER_OFFSET_MM, &[0, 0])?;
-        self.write_bytes(Register::MM_CONFIG__OUTER_OFFSET_MM, &[0, 0])?;
+        self.write_bytes(i2c, Register::MM_CONFIG__INNER_OFFSET_MM, &[0, 0])?;
+        self.write_bytes(i2c, Register::MM_CONFIG__OUTER_OFFSET_MM, &[0, 0])?;
 
         Ok(())
     }
 
     /// Get the current offset in millimeters.
-    pub fn get_offset(&mut self) -> Result<i16, Error<E>> {
+    pub fn get_offset(&mut self, i2c: &mut T) -> Result<i16, Error<E>> {
         let mut offset = [0, 0];
 
-        self.read_bytes(Register::ALGO__PART_TO_PART_RANGE_OFFSET_MM, &mut offset)?;
+        self.read_bytes(
+            i2c,
+            Register::ALGO__PART_TO_PART_RANGE_OFFSET_MM,
+            &mut offset,
+        )?;
 
         let mut offset = u16::from_be_bytes(offset) << 3;
 
@@ -833,12 +875,14 @@ where
     /// # Arguments
     ///
     /// * `correction` - The number of photons reflected back from the cover glass in cps.
-    pub fn set_cross_talk(&mut self, correction: u16) -> Result<(), Error<E>> {
+    pub fn set_cross_talk(&mut self, i2c: &mut T, correction: u16) -> Result<(), Error<E>> {
         self.write_bytes(
+            i2c,
             Register::ALGO__CROSSTALK_COMPENSATION_X_PLANE_GRADIENT_KCPS,
             &[0, 0],
         )?;
         self.write_bytes(
+            i2c,
             Register::ALGO__CROSSTALK_COMPENSATION_Y_PLANE_GRADIENT_KCPS,
             &[0, 0],
         )?;
@@ -846,6 +890,7 @@ where
         let correction = (correction << 9) / 1000;
 
         self.write_bytes(
+            i2c,
             Register::ALGO__CROSSTALK_COMPENSATION_PLANE_OFFSET_KCPS,
             &correction.to_be_bytes(),
         )?;
@@ -854,10 +899,11 @@ where
     }
 
     /// Get the crosstalk correction value in cps.
-    pub fn get_cross_talk(&mut self) -> Result<u16, Error<E>> {
+    pub fn get_cross_talk(&mut self, i2c: &mut T) -> Result<u16, Error<E>> {
         let mut correction = [0, 0];
 
         self.read_bytes(
+            i2c,
             Register::ALGO__CROSSTALK_COMPENSATION_PLANE_OFFSET_KCPS,
             &mut correction,
         )?;
@@ -873,33 +919,45 @@ where
     /// # Arguments
     ///
     /// * `threshold` - The threshold to apply.
-    pub fn set_distance_threshold(&mut self, threshold: Threshold) -> Result<(), Error<E>> {
+    pub fn set_distance_threshold(
+        &mut self,
+        i2c: &mut T,
+        threshold: Threshold,
+    ) -> Result<(), Error<E>> {
         let mut config = [0];
 
-        self.read_bytes(Register::SYSTEM__INTERRUPT_CONFIG_GPIO, &mut config)?;
+        self.read_bytes(i2c, Register::SYSTEM__INTERRUPT_CONFIG_GPIO, &mut config)?;
 
         let config = config[0] & 0x47 | (threshold.window as u8 & 0x07);
 
-        self.write_bytes(Register::SYSTEM__INTERRUPT_CONFIG_GPIO, &[config])?;
-        self.write_bytes(Register::SYSTEM__THRESH_HIGH, &threshold.high.to_be_bytes())?;
-        self.write_bytes(Register::SYSTEM__THRESH_LOW, &threshold.low.to_be_bytes())?;
+        self.write_bytes(i2c, Register::SYSTEM__INTERRUPT_CONFIG_GPIO, &[config])?;
+        self.write_bytes(
+            i2c,
+            Register::SYSTEM__THRESH_HIGH,
+            &threshold.high.to_be_bytes(),
+        )?;
+        self.write_bytes(
+            i2c,
+            Register::SYSTEM__THRESH_LOW,
+            &threshold.low.to_be_bytes(),
+        )?;
 
         Ok(())
     }
 
     /// Get the currently set distance threshold.
-    pub fn get_distance_threshold(&mut self) -> Result<Threshold, Error<E>> {
+    pub fn get_distance_threshold(&mut self, i2c: &mut T) -> Result<Threshold, Error<E>> {
         let mut config = [0];
 
-        self.read_bytes(Register::SYSTEM__INTERRUPT_CONFIG_GPIO, &mut config)?;
+        self.read_bytes(i2c, Register::SYSTEM__INTERRUPT_CONFIG_GPIO, &mut config)?;
 
         let window: Window = (config[0] & 0x07).into();
 
         let mut high = [0, 0];
         let mut low = [0, 0];
 
-        self.read_bytes(Register::SYSTEM__THRESH_HIGH, &mut high)?;
-        self.read_bytes(Register::SYSTEM__THRESH_LOW, &mut low)?;
+        self.read_bytes(i2c, Register::SYSTEM__THRESH_HIGH, &mut high)?;
+        self.read_bytes(i2c, Register::SYSTEM__THRESH_LOW, &mut low)?;
 
         Ok(Threshold {
             window,
@@ -914,13 +972,13 @@ where
     /// # Arguments
     ///
     /// * `roi` - The ROI to apply.
-    pub fn set_roi(&mut self, mut roi: ROI) -> Result<(), Error<E>> {
+    pub fn set_roi(&mut self, i2c: &mut T, mut roi: ROI) -> Result<(), Error<E>> {
         debug_assert!(roi.width >= 4);
         debug_assert!(roi.height >= 4);
 
         let mut center = [0];
 
-        self.read_bytes(Register::ROI_CONFIG__MODE_ROI_CENTRE_SPAD, &mut center)?;
+        self.read_bytes(i2c, Register::ROI_CONFIG__MODE_ROI_CENTRE_SPAD, &mut center)?;
 
         if roi.width > 16 {
             roi.width = 16;
@@ -936,8 +994,9 @@ where
 
         let config = ((roi.height - 1) << 4 | (roi.width - 1)) as u8;
 
-        self.write_bytes(Register::ROI_CONFIG__MODE_ROI_CENTRE_SPAD, &center)?;
+        self.write_bytes(i2c, Register::ROI_CONFIG__MODE_ROI_CENTRE_SPAD, &center)?;
         self.write_bytes(
+            i2c,
             Register::ROI_CONFIG__USER_ROI_REQUESTED_GLOBAL_XY_SIZE,
             &[config],
         )?;
@@ -949,10 +1008,11 @@ where
     ///
     /// # Arguments
     ///
-    pub fn get_roi(&mut self) -> Result<ROI, Error<E>> {
+    pub fn get_roi(&mut self, i2c: &mut T) -> Result<ROI, Error<E>> {
         let mut config = [0];
 
         self.read_bytes(
+            i2c,
             Register::ROI_CONFIG__USER_ROI_REQUESTED_GLOBAL_XY_SIZE,
             &mut config,
         )?;
@@ -970,15 +1030,19 @@ where
     /// # Arguments
     ///
     /// * `center` - Tne ROI center to apply.
-    pub fn set_roi_center(&mut self, center: ROICenter) -> Result<(), Error<E>> {
-        self.write_bytes(Register::ROI_CONFIG__USER_ROI_CENTRE_SPAD, &[center.spad])
+    pub fn set_roi_center(&mut self, i2c: &mut T, center: ROICenter) -> Result<(), Error<E>> {
+        self.write_bytes(
+            i2c,
+            Register::ROI_CONFIG__USER_ROI_CENTRE_SPAD,
+            &[center.spad],
+        )
     }
 
     /// Get the current ROI center.
-    pub fn get_roi_center(&mut self) -> Result<ROICenter, Error<E>> {
+    pub fn get_roi_center(&mut self, i2c: &mut T) -> Result<ROICenter, Error<E>> {
         let mut center = [0];
 
-        self.read_bytes(Register::ROI_CONFIG__MODE_ROI_CENTRE_SPAD, &mut center)?;
+        self.read_bytes(i2c, Register::ROI_CONFIG__MODE_ROI_CENTRE_SPAD, &mut center)?;
 
         Ok(ROICenter { spad: center[0] })
     }
@@ -988,18 +1052,20 @@ where
     /// # Arguments
     ///
     /// * `threshold` - The signal threshold.
-    pub fn set_signal_threshold(&mut self, threshold: u16) -> Result<(), Error<E>> {
+    pub fn set_signal_threshold(&mut self, i2c: &mut T, threshold: u16) -> Result<(), Error<E>> {
         self.write_bytes(
+            i2c,
             Register::RANGE_CONFIG__MIN_COUNT_RATE_RTN_LIMIT_MCPS,
             &(threshold >> 3).to_be_bytes(),
         )
     }
 
     /// Get the currently set signal threshold.
-    pub fn get_signal_threshold(&mut self) -> Result<u16, Error<E>> {
+    pub fn get_signal_threshold(&mut self, i2c: &mut T) -> Result<u16, Error<E>> {
         let mut threshold = [0, 0];
 
         self.read_bytes(
+            i2c,
             Register::RANGE_CONFIG__MIN_COUNT_RATE_RTN_LIMIT_MCPS,
             &mut threshold,
         )?;
@@ -1012,22 +1078,23 @@ where
     /// # Arguments
     ///
     /// * `threshold` - The sigma threshold.
-    pub fn set_sigma_threshold(&mut self, threshold: u16) -> Result<(), Error<E>> {
+    pub fn set_sigma_threshold(&mut self, i2c: &mut T, threshold: u16) -> Result<(), Error<E>> {
         if threshold > (0xFFFF >> 2) {
             return Err(Error::InvalidSigmaThreshold);
         }
 
         self.write_bytes(
+            i2c,
             Register::RANGE_CONFIG__SIGMA_THRESH,
             &(threshold << 2).to_be_bytes(),
         )
     }
 
     /// Get the currently set sigma threshold.
-    pub fn get_sigma_threshold(&mut self) -> Result<u16, Error<E>> {
+    pub fn get_sigma_threshold(&mut self, i2c: &mut T) -> Result<u16, Error<E>> {
         let mut threshold = [0, 0];
 
-        self.read_bytes(Register::RANGE_CONFIG__SIGMA_THRESH, &mut threshold)?;
+        self.read_bytes(i2c, Register::RANGE_CONFIG__SIGMA_THRESH, &mut threshold)?;
 
         Ok(u16::from_be_bytes(threshold) >> 2)
     }
@@ -1035,25 +1102,27 @@ where
     /// Perform temperature calibration of the sensor.
     /// It is recommended to call this function any time the temperature might have changed by more than 8 degrees Celsius
     /// without sensor ranging activity for an extended period.
-    pub fn calibrate_temperature(&mut self) -> Result<(), Error<E>> {
+    pub fn calibrate_temperature(&mut self, i2c: &mut T) -> Result<(), Error<E>> {
         self.write_bytes(
+            i2c,
             Register::VHV_CONFIG__TIMEOUT_MACROP_LOOP_BOUND,
             &0x81u16.to_be_bytes(),
         )?;
-        self.write_bytes(Register::VHV_CONFIG__INIT, &0x92u16.to_be_bytes())?;
+        self.write_bytes(i2c, Register::VHV_CONFIG__INIT, &0x92u16.to_be_bytes())?;
 
-        self.start_ranging()?;
+        self.start_ranging(i2c)?;
 
-        while !self.is_data_ready()? {}
+        while !self.is_data_ready(i2c)? {}
 
-        self.clear_interrupt()?;
-        self.stop_ranging()?;
+        self.clear_interrupt(i2c)?;
+        self.stop_ranging(i2c)?;
 
         self.write_bytes(
+            i2c,
             Register::VHV_CONFIG__TIMEOUT_MACROP_LOOP_BOUND,
             &0x09u16.to_be_bytes(),
         )?;
-        self.write_bytes(Register::VHV_CONFIG__INIT, &0u16.to_be_bytes())?;
+        self.write_bytes(i2c, Register::VHV_CONFIG__INIT, &0u16.to_be_bytes())?;
 
         Ok(())
     }
@@ -1065,34 +1134,47 @@ where
     /// # Arguments
     ///
     /// * `target_distance_mm` - Distance to the target in millimeters, ST recommends 100 mm.
-    pub fn calibrate_offset(&mut self, target_distance_mm: u16) -> Result<i16, Error<E>> {
+    pub fn calibrate_offset(
+        &mut self,
+        i2c: &mut T,
+        target_distance_mm: u16,
+    ) -> Result<i16, Error<E>> {
         self.write_bytes(
+            i2c,
             Register::ALGO__PART_TO_PART_RANGE_OFFSET_MM,
             &0u16.to_be_bytes(),
         )?;
-        self.write_bytes(Register::MM_CONFIG__INNER_OFFSET_MM, &0u16.to_be_bytes())?;
-        self.write_bytes(Register::MM_CONFIG__OUTER_OFFSET_MM, &0u16.to_be_bytes())?;
+        self.write_bytes(
+            i2c,
+            Register::MM_CONFIG__INNER_OFFSET_MM,
+            &0u16.to_be_bytes(),
+        )?;
+        self.write_bytes(
+            i2c,
+            Register::MM_CONFIG__OUTER_OFFSET_MM,
+            &0u16.to_be_bytes(),
+        )?;
 
-        self.start_ranging()?;
+        self.start_ranging(i2c)?;
 
         let mut average_distance = 0;
 
         let measurement_count = 50;
 
         for _ in 0..measurement_count {
-            while self.is_data_ready()? {}
+            while self.is_data_ready(i2c)? {}
 
-            average_distance += self.get_distance()?;
-            self.clear_interrupt()?;
+            average_distance += self.get_distance(i2c)?;
+            self.clear_interrupt(i2c)?;
         }
 
-        self.stop_ranging()?;
+        self.stop_ranging(i2c)?;
 
         average_distance /= measurement_count;
 
         let offset = target_distance_mm as i16 - average_distance as i16;
 
-        self.set_offset(offset)?;
+        self.set_offset(i2c, offset)?;
 
         Ok(offset)
     }
@@ -1104,13 +1186,18 @@ where
     ///  Arguments
     ///
     /// * `target_distance_mm` - Distance to the target in millimeters, ST recommends 100 mm.
-    pub fn calibrate_cross_talk(&mut self, target_distance_mm: u16) -> Result<u16, Error<E>> {
+    pub fn calibrate_cross_talk(
+        &mut self,
+        i2c: &mut T,
+        target_distance_mm: u16,
+    ) -> Result<u16, Error<E>> {
         self.write_bytes(
+            i2c,
             Register::ALGO__CROSSTALK_COMPENSATION_PLANE_OFFSET_KCPS,
             &0u16.to_be_bytes(),
         )?;
 
-        self.start_ranging()?;
+        self.start_ranging(i2c)?;
 
         let mut average_distance = 0;
         let mut average_spad_cnt = 0;
@@ -1119,15 +1206,15 @@ where
         let measurement_count = 50;
 
         for _ in 0..measurement_count {
-            while self.is_data_ready()? {}
+            while self.is_data_ready(i2c)? {}
 
-            average_distance += self.get_distance()?;
-            average_signal_rate += self.get_signal_rate()?;
-            self.clear_interrupt()?;
-            average_spad_cnt += self.get_spad_count()?;
+            average_distance += self.get_distance(i2c)?;
+            average_signal_rate += self.get_signal_rate(i2c)?;
+            self.clear_interrupt(i2c)?;
+            average_spad_cnt += self.get_spad_count(i2c)?;
         }
 
-        self.stop_ranging()?;
+        self.stop_ranging(i2c)?;
 
         average_distance /= measurement_count;
         average_spad_cnt /= measurement_count;
@@ -1145,11 +1232,351 @@ where
         let config = ((calibrate_val as u16).saturating_mul(1000) >> 9).to_be_bytes();
 
         self.write_bytes(
+            i2c,
             Register::ALGO__CROSSTALK_COMPENSATION_PLANE_OFFSET_KCPS,
             &config,
         )?;
 
         Ok(0)
+    }
+}
+
+impl<T, E> VL53L1X<T>
+where
+    E: Debug,
+    T: Write<Error = E> + Read<Error = E>,
+{
+    /// Create a new instance of the VL53L1X driver with the given I2C address.
+    ///
+    /// # Arguments
+    ///
+    /// * `i2c` - Instance of object that implements I2C communication. Is used for further communication with the sensor
+    /// * `address` - The address to use for communication with the VL53L1X.
+    pub fn new(i2c: T, address: u8) -> VL53L1X<T> {
+        VL53L1X {
+            i2c,
+            inner: VL53L1XRef::new(address),
+        }
+    }
+
+    /// Write bytes to register at address of variable length.
+    /// (Number of bytes is limited to 4 for non iterator implementations)
+    ///
+    /// # Arguments
+    ///
+    /// * `address` - Address of the register to write to.
+    /// * `bytes` - Bytes to write to the given register.
+    pub fn write_bytes<R>(&mut self, address: R, bytes: &[u8]) -> Result<(), Error<E>>
+    where
+        R: Into<[u8; 2]>,
+    {
+        self.inner.write_bytes(&mut self.i2c, address, bytes)
+    }
+
+    /// Read bytes from at the address into mutable slice
+    ///
+    /// # Arguments
+    ///
+    /// * `address` - Address of the register to read from.
+    /// * `bytes` - Mutable slice that read data will be written to.
+    pub fn read_bytes<R>(&mut self, address: R, bytes: &mut [u8]) -> Result<(), Error<E>>
+    where
+        R: Into<[u8; 2]>,
+    {
+        self.inner.read_bytes(&mut self.i2c, address, bytes)
+    }
+
+    /// Get the driver version.
+    pub fn sw_version() -> SWVersion {
+        SWVersion {
+            major: 3,
+            minor: 5,
+            build: 1,
+            revision: 0,
+        }
+    }
+
+    /// Set the I2C address of the current device in case multiple devices with the same address exists on the same bus.
+    ///
+    /// # Arguments
+    ///
+    /// * `new_address` - The new address to set for the current device.
+    pub fn set_address(&mut self, new_address: u8) -> Result<(), Error<E>> {
+        self.inner.set_address(&mut self.i2c, new_address)
+    }
+
+    /// Load the 88 byte default values for sensor initialisation.
+    ///
+    /// # Arguments
+    ///
+    /// * `io_config` - The io voltage that will be configured for the device.
+    pub fn init(&mut self, io_config: IOVoltage) -> Result<(), Error<E>> {
+        self.inner.init(&mut self.i2c, io_config)
+    }
+
+    /// Clear the interrupt flag on the device.
+    /// Should be called after reading ranging data from the device to start the next measurement.
+    pub fn clear_interrupt(&mut self) -> Result<(), Error<E>> {
+        self.inner.clear_interrupt(&mut self.i2c)
+    }
+
+    /// Set polarity of the interrupt.
+    ///
+    /// # Arguments
+    ///
+    /// * `polarity` - The polarity to set.
+    pub fn set_interrupt_polarity(&mut self, polarity: Polarity) -> Result<(), Error<E>> {
+        self.inner.set_interrupt_polarity(&mut self.i2c, polarity)
+    }
+
+    /// Get the currently set interrupt polarity.
+    pub fn get_interrupt_polarity(&mut self) -> Result<Polarity, Error<E>> {
+        self.inner.get_interrupt_polarity(&mut self.i2c)
+    }
+
+    /// Start a distance ranging operation.
+    /// This operation is continuous, the interrupt flag should be cleared between each interrupt to start a new distance measurement.
+    pub fn start_ranging(&mut self) -> Result<(), Error<E>> {
+        self.inner.start_ranging(&mut self.i2c)
+    }
+
+    /// Stop an ongoing ranging operation.
+    pub fn stop_ranging(&mut self) -> Result<(), Error<E>> {
+        self.inner.stop_ranging(&mut self.i2c)
+    }
+
+    /// Check if new ranging data is available by polling the device.
+    pub fn is_data_ready(&mut self) -> Result<bool, Error<E>> {
+        self.inner.is_data_ready(&mut self.i2c)
+    }
+
+    /// Set the timing budget for a measurement operation in milliseconds.
+    ///
+    /// # Arguments
+    ///
+    /// * `milliseconds` - One of the following values = 15, 20, 33, 50, 100(default), 200, 500.
+    pub fn set_timing_budget_ms(&mut self, milliseconds: u16) -> Result<(), Error<E>> {
+        self.inner.set_timing_budget_ms(&mut self.i2c, milliseconds)
+    }
+
+    /// Get the currently set timing budget of the device.
+    pub fn get_timing_budget_ms(&mut self) -> Result<u16, Error<E>> {
+        self.inner.get_timing_budget_ms(&mut self.i2c)
+    }
+
+    /// Set the distance mode in which the device operates.
+    ///
+    /// # Arguments
+    ///
+    /// * `mode` - The distance mode to use.
+    pub fn set_distance_mode(&mut self, mode: DistanceMode) -> Result<(), Error<E>> {
+        self.inner.set_distance_mode(&mut self.i2c, mode)
+    }
+
+    /// Get the currently set distance mode of the device.
+    pub fn get_distance_mode(&mut self) -> Result<DistanceMode, Error<E>> {
+        self.inner.get_distance_mode(&mut self.i2c)
+    }
+
+    /// Set the inter measurement period in milliseconds.
+    /// This value must be greater or equal to the timing budget. This condition is not checked by this driver.
+    ///
+    /// # Arguments
+    ///
+    /// * `milliseconds` - The number of milliseconds used for the inter measurement period.
+    pub fn set_inter_measurement_period_ms(&mut self, milliseconds: u16) -> Result<(), Error<E>> {
+        self.inner
+            .set_inter_measurement_period_ms(&mut self.i2c, milliseconds)
+    }
+
+    /// Get the currently set inter measurement period in milliseconds.
+    pub fn get_inter_measurement_period_ms(&mut self) -> Result<u16, Error<E>> {
+        self.inner.get_inter_measurement_period_ms(&mut self.i2c)
+    }
+
+    /// Check if the device is booted.
+    pub fn is_booted(&mut self) -> Result<bool, Error<E>> {
+        self.inner.is_booted(&mut self.i2c)
+    }
+
+    /// Get the sensor id of the sensor. This id must be 0xEACC.
+    pub fn get_sensor_id(&mut self) -> Result<u16, Error<E>> {
+        self.inner.get_sensor_id(&mut self.i2c)
+    }
+
+    /// Get the distance measured in millimeters.
+    pub fn get_distance(&mut self) -> Result<u16, Error<E>> {
+        self.inner.get_distance(&mut self.i2c)
+    }
+
+    /// Get the returned signal per SPAD in kcps/SPAD where kcps stands for Kilo Count Per Second.
+    pub fn get_signal_per_spad(&mut self) -> Result<u16, Error<E>> {
+        self.inner.get_signal_per_spad(&mut self.i2c)
+    }
+
+    /// Get the ambient signal per SPAD in kcps/SPAD where kcps stands for Kilo Count Per Second.
+    pub fn get_ambient_per_spad(&mut self) -> Result<u16, Error<E>> {
+        self.inner.get_ambient_per_spad(&mut self.i2c)
+    }
+
+    /// Get the returned signal in kcps (Kilo Count Per Second).
+    pub fn get_signal_rate(&mut self) -> Result<u16, Error<E>> {
+        self.inner.get_signal_rate(&mut self.i2c)
+    }
+
+    /// Get the count of currently enabled SPADs.
+    pub fn get_spad_count(&mut self) -> Result<u16, Error<E>> {
+        self.inner.get_spad_count(&mut self.i2c)
+    }
+
+    /// Get the ambient signal in kcps (Kilo Count Per Second).
+    pub fn get_ambient_rate(&mut self) -> Result<u16, Error<E>> {
+        self.inner.get_ambient_rate(&mut self.i2c)
+    }
+
+    /// Get the ranging status.
+    pub fn get_range_status(&mut self) -> Result<RangeStatus, Error<E>> {
+        self.inner.get_range_status(&mut self.i2c)
+    }
+
+    /// Get a measurement result object which is read in a single access.
+    pub fn get_result(&mut self) -> Result<MeasureResult, Error<E>> {
+        self.inner.get_result(&mut self.i2c)
+    }
+
+    /// Set a offset in millimeters which is aplied to the distance.
+    ///
+    /// # Arguments
+    ///
+    /// * `offset` - The offset in millimeters.
+    pub fn set_offset(&mut self, offset: i16) -> Result<(), Error<E>> {
+        self.inner.set_offset(&mut self.i2c, offset)
+    }
+
+    /// Get the current offset in millimeters.
+    pub fn get_offset(&mut self) -> Result<i16, Error<E>> {
+        self.inner.get_offset(&mut self.i2c)
+    }
+
+    /// Set the crosstalk correction value in cps (Count Per Second).
+    ///
+    /// # Arguments
+    ///
+    /// * `correction` - The number of photons reflected back from the cover glass in cps.
+    pub fn set_cross_talk(&mut self, correction: u16) -> Result<(), Error<E>> {
+        self.inner.set_cross_talk(&mut self.i2c, correction)
+    }
+
+    /// Get the crosstalk correction value in cps.
+    pub fn get_cross_talk(&mut self) -> Result<u16, Error<E>> {
+        self.inner.get_cross_talk(&mut self.i2c)
+    }
+
+    /// Set a distance threshold.
+    ///
+    /// # Arguments
+    ///
+    /// * `threshold` - The threshold to apply.
+    pub fn set_distance_threshold(&mut self, threshold: Threshold) -> Result<(), Error<E>> {
+        self.inner.set_distance_threshold(&mut self.i2c, threshold)
+    }
+
+    /// Get the currently set distance threshold.
+    pub fn get_distance_threshold(&mut self) -> Result<Threshold, Error<E>> {
+        self.inner.get_distance_threshold(&mut self.i2c)
+    }
+
+    /// Set the region of interest of the sensor. The ROI is centered and only the size is settable.
+    /// The smallest acceptable ROI size is 4.
+    ///
+    /// # Arguments
+    ///
+    /// * `roi` - The ROI to apply.
+    pub fn set_roi(&mut self, roi: ROI) -> Result<(), Error<E>> {
+        self.inner.set_roi(&mut self.i2c, roi)
+    }
+
+    /// Get the currenly set ROI.
+    ///
+    /// # Arguments
+    ///
+    pub fn get_roi(&mut self) -> Result<ROI, Error<E>> {
+        self.inner.get_roi(&mut self.i2c)
+    }
+
+    /// Set the new ROI center.
+    /// If the new ROI clips out of the border this function does not return an error
+    /// but only when ranging is started will an error be returned.
+    ///
+    /// # Arguments
+    ///
+    /// * `center` - Tne ROI center to apply.
+    pub fn set_roi_center(&mut self, center: ROICenter) -> Result<(), Error<E>> {
+        self.inner.set_roi_center(&mut self.i2c, center)
+    }
+
+    /// Get the current ROI center.
+    pub fn get_roi_center(&mut self) -> Result<ROICenter, Error<E>> {
+        self.inner.get_roi_center(&mut self.i2c)
+    }
+
+    /// Set a signal threshold in kcps. Default is 1024
+    ///
+    /// # Arguments
+    ///
+    /// * `threshold` - The signal threshold.
+    pub fn set_signal_threshold(&mut self, threshold: u16) -> Result<(), Error<E>> {
+        self.inner.set_signal_threshold(&mut self.i2c, threshold)
+    }
+
+    /// Get the currently set signal threshold.
+    pub fn get_signal_threshold(&mut self) -> Result<u16, Error<E>> {
+        self.inner.get_signal_threshold(&mut self.i2c)
+    }
+
+    /// Set a sigma threshold in millimeter. Default is 15.
+    ///
+    /// # Arguments
+    ///
+    /// * `threshold` - The sigma threshold.
+    pub fn set_sigma_threshold(&mut self, threshold: u16) -> Result<(), Error<E>> {
+        self.inner.set_sigma_threshold(&mut self.i2c, threshold)
+    }
+
+    /// Get the currently set sigma threshold.
+    pub fn get_sigma_threshold(&mut self) -> Result<u16, Error<E>> {
+        self.inner.get_sigma_threshold(&mut self.i2c)
+    }
+
+    /// Perform temperature calibration of the sensor.
+    /// It is recommended to call this function any time the temperature might have changed by more than 8 degrees Celsius
+    /// without sensor ranging activity for an extended period.
+    pub fn calibrate_temperature(&mut self) -> Result<(), Error<E>> {
+        self.inner.calibrate_temperature(&mut self.i2c)
+    }
+
+    /// Perform offset calibration.
+    /// The function returns the offset value found and sets it as the new offset.
+    /// Target reflectance = grey 17%
+    ///
+    /// # Arguments
+    ///
+    /// * `target_distance_mm` - Distance to the target in millimeters, ST recommends 100 mm.
+    pub fn calibrate_offset(&mut self, target_distance_mm: u16) -> Result<i16, Error<E>> {
+        self.inner
+            .calibrate_offset(&mut self.i2c, target_distance_mm)
+    }
+
+    /// Perform crosstalk calibration.
+    /// The function returns the crosstalk value found and set it as the new crosstalk correction.
+    /// Target reflectance = grey 17%
+    ///
+    ///  Arguments
+    ///
+    /// * `target_distance_mm` - Distance to the target in millimeters, ST recommends 100 mm.
+    pub fn calibrate_cross_talk(&mut self, target_distance_mm: u16) -> Result<u16, Error<E>> {
+        self.inner
+            .calibrate_cross_talk(&mut self.i2c, target_distance_mm)
     }
 }
 
