@@ -12,7 +12,7 @@
 //! # Example
 //!
 //! ```
-//! use vl53l1x_uld::{self, VL53L1X, IOVoltage, RangeStatus};
+//! use vl53l1x_uld::{self, VL53L1X, VL53L1XRef, IOVoltage, RangeStatus};
 //! # use embedded_hal_mock::i2c::{Mock, Transaction};
 //! # use cfg_if::cfg_if;
 //! #
