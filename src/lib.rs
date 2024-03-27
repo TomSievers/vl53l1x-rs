@@ -26,9 +26,9 @@
 //! #
 //! #    cfg_if! {
 //! #        if #[cfg(feature = "i2c-iter")] {
-//! #            expectations.push(Transaction::write(0x29, vec![0x00, 0x30].iter().chain(VL53L1X::<Mock>::DEFAULT_CONFIG.iter()).cloned().collect()));
+//! #            expectations.push(Transaction::write(0x29, vec![0x00, 0x30].iter().chain(VL53L1XRef::<Mock>::DEFAULT_CONFIG.iter()).cloned().collect()));
 //! #        } else {
-//! #            for (byte, address) in VL53L1X::<Mock>::DEFAULT_CONFIG.iter().zip(0x30u16..0x88) {
+//! #            for (byte, address) in VL53L1XRef::<Mock>::DEFAULT_CONFIG.iter().zip(0x30u16..0x88) {
 //! #                let adrs = address.to_be_bytes();
 //! #                expectations.push(Transaction::write(0x29, vec![adrs[0], adrs[1], *byte]));
 //! #            }
