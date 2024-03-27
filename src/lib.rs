@@ -1259,6 +1259,33 @@ where
         }
     }
 
+    /// Write bytes to register at address of variable length.
+    /// (Number of bytes is limited to 4 for non iterator implementations)
+    ///
+    /// # Arguments
+    ///
+    /// * `address` - Address of the register to write to.
+    /// * `bytes` - Bytes to write to the given register.
+    pub fn write_bytes<R>(&mut self, address: R, bytes: &[u8]) -> Result<(), Error<E>>
+    where
+        R: Into<[u8; 2]>,
+    {
+        self.inner.write_bytes(&mut self.i2c, address, bytes)
+    }
+
+    /// Read bytes from at the address into mutable slice
+    ///
+    /// # Arguments
+    ///
+    /// * `address` - Address of the register to read from.
+    /// * `bytes` - Mutable slice that read data will be written to.
+    pub fn read_bytes<R>(&mut self, address: R, bytes: &mut [u8]) -> Result<(), Error<E>>
+    where
+        R: Into<[u8; 2]>,
+    {
+        self.inner.read_bytes(&mut self.i2c, address, bytes)
+    }
+
     /// Get the driver version.
     pub fn sw_version() -> SWVersion {
         SWVersion {
