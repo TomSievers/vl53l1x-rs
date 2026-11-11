@@ -650,7 +650,7 @@ where
 
         let clock_pll = u16::from_be_bytes(clock_pll) & 0x3FF;
 
-        let val = ((clock_pll * milliseconds) as f32 * 1.075f32) as u32;
+        let val = ((clock_pll as u32 * milliseconds as u32) as f32 * 1.075f32) as u32;
 
         self.write_bytes(
             Register::SYSTEM__INTERMEASUREMENT_PERIOD,
@@ -1336,5 +1336,24 @@ mod tests {
         assert!(measurement.status == RangeStatus::None);
         assert!(measurement.spad_count == 0);
         assert!(measurement.distance_mm == 0);
+    }
+
+    #[test]
+    fn inter_measurement_period_no_overflow() {
+        let osc_reg = (Register::RESULT__OSC_CALIBRATE_VAL as u16).to_be_bytes();
+        let imp_reg = (Register::SYSTEM__INTERMEASUREMENT_PERIOD as u16).to_be_bytes();
+
+        // clock_pll = 36 (typical), 2000 ms: 36 * 2000 = 72000 does not fit in a u16.
+        // Expected register value: 72000 * 1.075 = 77400 = 0x0001_2E58.
+        let expectations = [
+            I2cTransaction::write_read(0x29, vec![osc_reg[0], osc_reg[1]], vec![0x00, 0x24]),
+            I2cTransaction::write(0x29, vec![imp_reg[0], imp_reg[1], 0x00, 0x01, 0x2E, 0x58]),
+        ];
+
+        let i2c = I2cMock::new(&expectations);
+
+        let mut sensor = VL53L1XMock::new(i2c, DEFAULT_ADDRESS);
+
+        sensor.set_inter_measurement_period_ms(2000).unwrap();
     }
 }
