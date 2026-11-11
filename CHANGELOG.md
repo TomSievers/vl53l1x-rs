@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 * New constant `SENSOR_ID` which can be used when validating the sensor ID. This avoids having to copy & paste the ID (`0xEACC`).
 
+### Fixed
+* `set_inter_measurement_period_ms` no longer overflows for longer periods. The internal `clock_pll * milliseconds`
+  multiplication was done in `u16`, which panicked in debug builds and silently wrapped in release builds
+  (e.g. with a typical oscillator calibration value of 36, any period above ~1.8 s was programmed incorrectly).
+
 ## [2.0.0]
 ### Added
 * Added examples & more documentation
